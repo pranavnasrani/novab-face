@@ -39,11 +39,11 @@ const ToastNotification = ({ message, type }: { message: string, type: 'success'
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: -50, scale: 0.9 }}
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20, scale: 0.9 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
             transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-            className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 p-4 rounded-2xl shadow-lg text-white ${isSuccess ? 'bg-green-600' : 'bg-red-600'} max-w-sm w-full`}
+            className={`fixed bottom-28 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 p-4 rounded-2xl shadow-lg text-white ${isSuccess ? 'bg-green-600' : 'bg-red-600'} max-w-sm w-full`}
         >
             <Icon className="w-6 h-6 flex-shrink-0" />
             <p className="font-semibold text-sm">{message}</p>
@@ -558,7 +558,7 @@ export default function App() {
             return false;
         }
         if (passkeys.length === 0) {
-            showToast("No passkey registered for this user. Please register one in Settings.", 'error');
+            showToast("No passkey registered for this account. Please register one in Settings.", 'error');
             return false;
         }
 
