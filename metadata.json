@@ -1,0 +1,8 @@
+{
+  "name": "Copy of AI NOVA VOICE",
+  "description": "A modern mobile banking application with an AI-powered chat assistant that can understand natural language to perform tasks like initiating payments.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
