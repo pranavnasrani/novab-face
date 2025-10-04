@@ -40,7 +40,7 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
-  const { currentUser, transferMoney, users, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions } = useContext(BankContext);
+  const { currentUser, transferMoney, users, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey } = useContext(BankContext);
   const { t, language } = useTranslation();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -108,6 +108,26 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         const functionResponseParts = [];
         
         for (const call of functionCalls) {
+            const sensitiveActions = ['initiatePayment', 'makeAccountPayment', 'applyForCreditCard', 'applyForLoan', 'requestPaymentExtension'];
+            if (sensitiveActions.includes(call.name)) {
+                const systemMessage: Message = { id: messageId.current++, sender: 'system', text: t('passkeyConfirmationRequired', { action: call.name }) };
+                setMessages(prev => [...prev, systemMessage]);
+
+                const isVerified = await verifyCurrentUserWithPasskey();
+
+                if (!isVerified) {
+                    const cancelledMessage: Message = { id: messageId.current++, sender: 'system', text: t('actionCancelled') };
+                    setMessages(prev => [...prev, cancelledMessage]);
+                    functionResponseParts.push({
+                        functionResponse: {
+                            name: call.name,
+                            response: { success: false, message: 'User cancelled the action with their passkey.' },
+                        }
+                    });
+                    continue; // Skip to the next function call
+                }
+            }
+
             let resultMessage = "An unknown function was called.";
             let resultForModel: object = { success: false, message: 'Function not found' };
 

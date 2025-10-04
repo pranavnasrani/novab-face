@@ -43,7 +43,7 @@ const ToastNotification = ({ message, type }: { message: string, type: 'success'
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.9 }}
             transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-            className={`fixed top-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 p-4 rounded-2xl shadow-lg text-white ${isSuccess ? 'bg-green-600' : 'bg-red-600'} max-w-sm w-full`}
+            className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 p-4 rounded-2xl shadow-lg text-white ${isSuccess ? 'bg-green-600' : 'bg-red-600'} max-w-sm w-full`}
         >
             <Icon className="w-6 h-6 flex-shrink-0" />
             <p className="font-semibold text-sm">{message}</p>
@@ -88,6 +88,7 @@ interface BankContextType {
     registerPasskey: () => Promise<void>;
     loginWithPasskey: () => Promise<boolean>;
     removePasskey: (passkeyId: string) => void;
+    verifyCurrentUserWithPasskey: () => Promise<boolean>;
 }
 
 export const BankContext = createContext<BankContextType>(null!);
@@ -551,6 +552,43 @@ export default function App() {
         }
     };
     
+    const verifyCurrentUserWithPasskey = async (): Promise<boolean> => {
+        if (!currentUser || !isPasskeySupported) {
+            showToast("Passkey support is not available.", 'error');
+            return false;
+        }
+        if (passkeys.length === 0) {
+            showToast("No passkey registered for this user. Please register one in Settings.", 'error');
+            return false;
+        }
+
+        try {
+            const challenge = new Uint8Array(32);
+            crypto.getRandomValues(challenge);
+
+            const assertion = await navigator.credentials.get({
+                publicKey: {
+                    challenge,
+                    allowCredentials: passkeys.map(pk => ({
+                        id: base64url.decode(pk.id),
+                        type: 'public-key',
+                    })),
+                    userVerification: 'required',
+                    timeout: 60000,
+                },
+            });
+
+            return !!assertion;
+        } catch (err) {
+            console.error("Passkey verification error:", err);
+            // Don't show a toast if the user intentionally cancels the prompt
+            if ((err as Error).name !== 'NotAllowedError' && (err as Error).name !== 'AbortError') {
+                showToast("Passkey verification failed.", 'error');
+            }
+            return false;
+        }
+    };
+    
     const removePasskey = (passkeyId: string) => {
         if (!currentUser) return;
         const allPasskeys = JSON.parse(localStorage.getItem('gemini-bank-passkeys') || '{}');
@@ -563,7 +601,7 @@ export default function App() {
         showToast("Passkey removed.", 'success');
     };
 
-    const contextValue = { currentUser, users, transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey };
+    const contextValue = { currentUser, users, transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey };
 
     const screenKey = currentUser ? 'dashboard' : authScreen;
     

@@ -126,6 +126,8 @@ const translations = {
     createdOn: "Created on",
     noPasskeys: "No passkeys registered for this account.",
     passkeyLoginFailed: "Passkey login failed.",
+    passkeyConfirmationRequired: "Confirmation required for '{{action}}'. Please use your passkey to proceed.",
+    actionCancelled: "Action cancelled.",
   },
   es: {
     // Welcome/Onboarding
@@ -252,6 +254,8 @@ const translations = {
     createdOn: "Creada el",
     noPasskeys: "No hay passkeys registradas para esta cuenta.",
     passkeyLoginFailed: "Falló el inicio de sesión con passkey.",
+    passkeyConfirmationRequired: "Se requiere confirmación para '{{action}}'. Por favor, usa tu passkey para continuar.",
+    actionCancelled: "Acción cancelada.",
   },
   th: {
     // Welcome/Onboarding
@@ -369,6 +373,8 @@ const translations = {
     createdOn: "สร้างเมื่อ",
     noPasskeys: "ไม่มีพาสคีย์ที่ลงทะเบียนสำหรับบัญชีนี้",
     passkeyLoginFailed: "การเข้าสู่ระบบด้วยพาสคีย์ล้มเหลว",
+    passkeyConfirmationRequired: "ต้องการการยืนยันสำหรับ '{{action}}' กรุณาใช้พาสคีย์ของคุณเพื่อดำเนินการต่อ",
+    actionCancelled: "การดำเนินการถูกยกเลิก",
   },
   tl: {
     // Welcome/Onboarding
@@ -486,6 +492,8 @@ const translations = {
     createdOn: "Ginawa noong",
     noPasskeys: "Walang mga passkey na nakarehistro para sa account na ito.",
     passkeyLoginFailed: "Nabigo ang pag-login gamit ang passkey.",
+    passkeyConfirmationRequired: "Kinakailangan ng kumpirmasyon para sa '{{action}}'. Mangyaring gamitin ang iyong passkey para magpatuloy.",
+    actionCancelled: "Kinansela ang pagkilos.",
   }
 };
 
