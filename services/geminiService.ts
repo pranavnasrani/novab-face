@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, FunctionDeclaration, Type, Chat, GenerateContentResponse } from '@google/genai';
 import { Transaction, Card, Loan } from '../types';
 
@@ -192,7 +193,7 @@ const getSpendingAnalysisFunctionDeclaration: FunctionDeclaration = {
 
 
 export const createChatSession = (userFullName: string, contacts: string[], language: 'en' | 'es' | 'th' | 'tl', userCards: Card[], userLoans: Loan[]): Chat => {
-    // FIX: Replaced the deprecated model `gemini-1.5-flash` with the recommended `gemini-pro`.
+    // FIX: Replaced the deprecated model `gemini-1.5-flash` with the recommended `gemini-2.5-flash`.
     const langNameMap = {
         en: 'English',
         es: 'Spanish',

@@ -1,3 +1,4 @@
+
 import React, { useState, createContext, useEffect } from 'react';
 import { MOCK_USERS, MOCK_TRANSACTIONS, generateMockCard, generateMockLoan, generateAccountNumber } from './constants';
 import { User, Transaction, Card, Loan } from './types';
@@ -43,7 +44,7 @@ const ToastNotification = ({ message, type }: { message: string, type: 'success'
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.9 }}
             transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-            className={`fixed bottom-28 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 p-4 rounded-2xl shadow-lg text-white ${isSuccess ? 'bg-green-600' : 'bg-red-600'} max-w-sm w-full`}
+            className={`fixed bottom-28 inset-x-0 mx-auto z-50 flex items-center gap-3 p-4 rounded-2xl shadow-lg text-white ${isSuccess ? 'bg-green-600' : 'bg-red-600'} w-11/12 max-w-sm`}
         >
             <Icon className="w-6 h-6 flex-shrink-0" />
             <p className="font-semibold text-sm">{message}</p>
@@ -540,7 +541,8 @@ export default function App() {
             const assertion = await navigator.credentials.get({
                 publicKey: {
                     challenge,
-                    allowCredentials: allowedCredentials,
+                    // FIX: Corrected a typo from `allowCredentials` to `allowedCredentials`.
+                    allowedCredentials,
                     userVerification: 'required',
                     timeout: 60000,
                 },
