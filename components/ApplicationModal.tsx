@@ -11,7 +11,7 @@ interface ApplicationModalProps {
 }
 
 export const ApplicationModal: React.FC<ApplicationModalProps> = ({ isOpen, onClose, applicationType }) => {
-  const { currentUser, addCardToUser, addLoanToUser, showToast } = useContext(BankContext);
+  const { currentUser, addCardToUser, addLoanToUser, showToast, verifyCurrentUserWithPasskey } = useContext(BankContext);
   const { t } = useTranslation();
   const [formData, setFormData] = useState({
     fullName: currentUser?.name || '',
@@ -47,11 +47,19 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ isOpen, onCl
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    setTimeout(() => { // Simulate network delay
+    const isVerified = await verifyCurrentUserWithPasskey();
+    if (!isVerified) {
+        showToast(t('actionCancelled'), 'error');
+        setIsSubmitting(false);
+        return;
+    }
+
+    // Simulate network delay
+    setTimeout(() => { 
         const baseDetails = {
             fullName: formData.fullName,
             address: formData.address,
