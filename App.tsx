@@ -522,6 +522,17 @@ export default function App() {
     const loginWithPasskey = async (): Promise<boolean> => {
         if (!isPasskeySupported) return false;
 
+        const allPasskeys = JSON.parse(localStorage.getItem('gemini-bank-passkeys') || '{}');
+        const allowedCredentials: PublicKeyCredentialDescriptor[] = Object.values(allPasskeys).flat().map((pk: any) => ({
+            id: base64url.decode(pk.id),
+            type: 'public-key',
+        }));
+
+        if (allowedCredentials.length === 0) {
+            showToast("No passkeys registered. Please log in with PIN to register one.", 'error');
+            return false;
+        }
+
         try {
             const challenge = new Uint8Array(32);
             crypto.getRandomValues(challenge);
@@ -529,6 +540,7 @@ export default function App() {
             const assertion = await navigator.credentials.get({
                 publicKey: {
                     challenge,
+                    allowCredentials: allowedCredentials,
                     userVerification: 'required',
                     timeout: 60000,
                 },
@@ -547,7 +559,9 @@ export default function App() {
             return false;
         } catch (err) {
             console.error(err);
-            showToast("Passkey login failed.", 'error');
+            if ((err as Error).name !== 'NotAllowedError' && (err as Error).name !== 'AbortError') {
+                showToast("Passkey login failed.", 'error');
+            }
             return false;
         }
     };
