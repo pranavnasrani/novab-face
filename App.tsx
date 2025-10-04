@@ -1,4 +1,5 @@
 
+
 import React, { useState, createContext, useEffect } from 'react';
 import { MOCK_USERS, MOCK_TRANSACTIONS, generateMockCard, generateMockLoan, generateAccountNumber } from './constants';
 import { User, Transaction, Card, Loan } from './types';
@@ -541,8 +542,8 @@ export default function App() {
             const assertion = await navigator.credentials.get({
                 publicKey: {
                     challenge,
-                    // FIX: Corrected a typo from `allowCredentials` to `allowedCredentials`.
-                    allowedCredentials,
+                    // FIX: Corrected a typo from `allowedCredentials` to `allowCredentials`.
+                    allowCredentials: allowedCredentials,
                     userVerification: 'required',
                     timeout: 60000,
                 },

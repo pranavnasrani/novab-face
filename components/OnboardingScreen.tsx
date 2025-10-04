@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from '../hooks/useTranslation';
 import { GlobeIcon } from './icons';
@@ -48,14 +48,31 @@ const variants = {
 const LanguageSelector = () => {
     const { language, setLanguage } = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
     
     const handleLanguageChange = (lang: 'en' | 'es' | 'th' | 'tl') => {
         setLanguage(lang);
         setIsOpen(false);
     };
 
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+
+        if (isOpen) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [isOpen]);
+
     return (
-        <div className="relative">
+        <div className="relative" ref={dropdownRef}>
             <button onClick={() => setIsOpen(!isOpen)} className="text-white/80 hover:text-white transition-colors">
                 <GlobeIcon className="w-6 h-6" />
             </button>
