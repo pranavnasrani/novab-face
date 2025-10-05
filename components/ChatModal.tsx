@@ -478,17 +478,34 @@ Respond concisely and naturally, as you are speaking. All function calling capab
     // FIX: Cast `window` to `any` to allow access to the vendor-prefixed `webkitAudioContext` for older browser compatibility, resolving TypeScript errors.
     inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
     outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+
+    // Explicitly resume AudioContexts. This can be necessary in some browser environments
+    // where contexts start in a 'suspended' state and need user interaction to start.
+    if (inputAudioContext.current.state === 'suspended') {
+        inputAudioContext.current.resume();
+    }
+    if (outputAudioContext.current.state === 'suspended') {
+        outputAudioContext.current.resume();
+    }
+    
     nextStartTime.current = 0;
     audioSources.current = new Set();
     
     sessionPromise.current = ai.live.connect({
-        model: 'gemini-live-2.5-flash-preview',
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         callbacks: {
             onopen: () => {
                 setVoiceState('listening');
                 if (!inputAudioContext.current || !mediaStream.current) return;
                 mediaStreamSource.current = inputAudioContext.current.createMediaStreamSource(mediaStream.current);
                 scriptProcessor.current = inputAudioContext.current.createScriptProcessor(4096, 1, 1);
+                
+                // Create a GainNode to mute the microphone input and prevent feedback.
+                // Connecting the audio graph to the destination via a muted GainNode is a
+                // standard practice to keep the AudioContext active.
+                const muteNode = inputAudioContext.current.createGain();
+                muteNode.gain.value = 0;
+
                 scriptProcessor.current.onaudioprocess = (audioProcessingEvent) => {
                     const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
                     const pcmBlob = createBlob(inputData);
@@ -497,7 +514,8 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                     });
                 };
                 mediaStreamSource.current.connect(scriptProcessor.current);
-                scriptProcessor.current.connect(inputAudioContext.current.destination);
+                scriptProcessor.current.connect(muteNode);
+                muteNode.connect(inputAudioContext.current.destination);
             },
             onmessage: async (message: LiveServerMessage) => {
                 if (message.serverContent?.inputTranscription) {
