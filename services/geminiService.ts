@@ -163,12 +163,13 @@ export const applyForLoanFunctionDeclaration: FunctionDeclaration = {
                 description: "Object containing all user-provided loan application details.",
                 properties: {
                     loanAmount: { type: Type.NUMBER, description: "The amount of money the user wants to borrow." },
+                    loanTerm: { type: Type.NUMBER, description: "The desired loan term in months (e.g., 24, 36, 48, 60)." },
                     address: { type: Type.STRING, description: "The user's full residential address." },
                     dateOfBirth: { type: Type.STRING, description: "The user's date of birth (e.g., YYYY-MM-DD)." },
                     employmentStatus: { type: Type.STRING, description: "e.g., Employed, Self-Employed, Unemployed." },
                     annualIncome: { type: Type.NUMBER, description: "The user's total annual income." },
                 },
-                required: ['loanAmount', 'address', 'dateOfBirth', 'employmentStatus', 'annualIncome']
+                required: ['loanAmount', 'loanTerm', 'address', 'dateOfBirth', 'employmentStatus', 'annualIncome']
             }
         },
         required: ['applicationDetails'],
@@ -269,7 +270,7 @@ Your capabilities include initiating payments, providing card information, analy
 
 7.  **Loan Application**:
     - If the user wants to "apply for a loan," you MUST use the 'applyForLoan' tool.
-    - Before calling the tool, collect the desired loan amount and the other personal/financial details: address, date of birth, employment status, and annual income. You already know the user's name is ${userFullName}, so do not ask for it.
+    - Before calling the tool, collect the desired loan amount, the loan term in months, and the other personal/financial details: address, date of birth, employment status, and annual income. You already know the user's name is ${userFullName}, so do not ask for it.
     - Ask for missing information conversationally.
 
 8.  **General Conversation**:

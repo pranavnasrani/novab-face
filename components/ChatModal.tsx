@@ -229,8 +229,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
           resultMessage = result.message;
           resultForModel = result;
       } else if (call.name === 'applyForLoan') {
-          const applicationDetailsFromAI = call.args.applicationDetails as Omit<LoanApplicationDetails, 'fullName' | 'loanTerm'>;
-          const loanDetails = { ...applicationDetailsFromAI, fullName: currentUser.name, loanTerm: 36 };
+          const applicationDetailsFromAI = call.args.applicationDetails as Omit<LoanApplicationDetails, 'fullName'>;
+          const loanDetails = { ...applicationDetailsFromAI, fullName: currentUser.name };
           const result = await addLoanToUser(loanDetails);
           resultMessage = result.message;
           resultForModel = result;
@@ -391,7 +391,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
 - Your main goal is to help with banking tasks using the available tools.
 - Keep your responses short and conversational, suitable for voice interaction.
 - The user is speaking ${langName}. You MUST respond exclusively in ${langName}.
-- Do not ask the user to use the text interface for applications; simply state that you cannot process applications via voice at this time.
+- **Applications**: You can process applications for credit cards and loans. Conversationally collect all necessary details from the user before calling the appropriate tool. For loans, you need the desired loan amount and term in months. For both, you need their address, date of birth, employment status, and annual income. You already know their name.
 - Here is some context about the user:
   - Contacts: ${contactsInstruction}
   - Cards: ${cardDescriptions}
