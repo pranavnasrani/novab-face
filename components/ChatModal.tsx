@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights } from '../services/geminiService';
@@ -373,7 +374,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   };
 
   const startVoiceSession = async () => {
-      if (!currentUser || !ai) return;
+      if (!currentUser || !ai || !contactsLoaded) return;
       setIsVoiceModeActive(true);
       setVoiceConnectionState('connecting');
 
@@ -391,6 +392,36 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
           }
 
           mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+          const langNameMap = {
+            en: 'English', es: 'Spanish', th: 'Thai', tl: 'Tagalog'
+          };
+          const langName = langNameMap[language];
+          const contactsInstruction = contacts.length > 0
+              ? `Available contacts by name are: ${contacts.join(', ')}. If a name doesn't match, inform the user.`
+              : "There are no other users registered. If the user asks to send money to someone by name, you must inform them that no contacts were found and they should try an account number, email, or phone instead.";
+          const activeLoans = currentUser.loans.filter(l => l.status === 'Active');
+          let loanInstructions = '';
+          if (activeLoans.length === 0) {
+              loanInstructions = "The user has no active loans.";
+          } else if (activeLoans.length === 1) {
+              loanInstructions = `The user has one active loan with ID: '${activeLoans[0].id}'. Use this ID for any loan-related actions.`;
+          } else {
+              const loanDescriptions = activeLoans.map((l) => `a loan for ${formatCurrency(l.loanAmount)} (ID: '${l.id}')`).join('; ');
+              loanInstructions = `The user has multiple active loans: ${loanDescriptions}. You MUST ask for clarification before taking action on a loan.`;
+          }
+          const cardDescriptions = currentUser.cards.length > 0 ? `The user has: ${currentUser.cards.map(c => `${c.cardType} ending in ${c.cardNumber.slice(-4)}`).join(', ')}.` : "The user has no credit cards.";
+
+          const systemInstruction = `You are a world-class banking assistant named Nova for a user named ${currentUser.name}. You will be communicating via voice. Be concise and conversational.
+
+1.  **Payments**: Use 'initiatePayment' for transfers. You need a recipient (name, account number, email, or phone) and an amount. ${contactsInstruction}
+2.  **Spending Analysis**: Use 'getSpendingAnalysis' for spending breakdowns.
+3.  **Account Info**: Use 'getAccountBalance' for overall balances, 'getCardStatementDetails' for card bills, and 'getCardTransactions' or 'getAccountTransactions' for recent transactions. ${cardDescriptions}
+4.  **Bill & Loan Payments**: Use 'makeAccountPayment'. Clarify the payment amount. ${loanInstructions}
+5.  **Payment Extensions**: Use 'requestPaymentExtension'. ${loanInstructions}
+6.  **Applications**: The user cannot apply for new cards or loans via voice. Ask them to use the text interface.
+7.  **General**: Be polite, brief, and helpful. You MUST respond exclusively in ${langName}.`;
+
 
           sessionPromiseRef.current = ai.live.connect({
               model: 'gemini-2.5-flash-native-audio-preview-09-2025',
@@ -495,6 +526,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                   onclose: () => { stopVoiceSession(); },
               },
               config: {
+                  systemInstruction: systemInstruction,
                   responseModalities: [Modality.AUDIO],
                   inputAudioTranscription: {},
                   outputAudioTranscription: {},
@@ -597,7 +629,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
               </header>
               
               <div className="flex-grow p-4 overflow-y-auto flex flex-col">
-                <div className="space-y-4 mt-auto">
+                <div className="space-y-4">
                     {messages.length === 1 && !isLoading && !isVoiceModeActive && (
                         <motion.div
                             variants={promptContainerVariants}
