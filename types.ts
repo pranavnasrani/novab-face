@@ -38,7 +38,6 @@ export interface User {
   loans: Loan[];
   email: string;
   phone: string;
-  pin: string;
 }
 
 export interface Transaction {

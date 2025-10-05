@@ -32,6 +32,7 @@ const translations = {
     navHome: "Home",
     navCards: "Cards",
     navLoans: "Loans",
+    navInsights: "Insights",
     navSettings: "Settings",
     openAIAssistant: "Open AI Assistant",
     applyForNew: "Apply for a new {{type}}",
@@ -131,6 +132,14 @@ const translations = {
     passkeyLoginFailed: "Passkey login failed.",
     passkeyConfirmationRequired: "Confirmation required for '{{action}}'. Please use your passkey to proceed.",
     actionCancelled: "Action cancelled.",
+    // Insights Screen
+    aiPoweredInsights: "AI-Powered Insights",
+    aiInsightsDescription: "Discover patterns in your spending and get personalized financial advice from Nova.",
+    subscriptionTracker: "Subscription Tracker",
+    aiAnalyzingSpending: "AI is analyzing your spending...",
+    aiAnalyzingSubscriptions: "AI is analyzing your transactions for recurring payments...",
+    noSubscriptionsFound: "No recurring subscriptions found in your recent transactions.",
+    monthly: "monthly",
   },
   es: {
     // Welcome/Onboarding
@@ -163,6 +172,7 @@ const translations = {
     navHome: "Inicio",
     navCards: "Tarjetas",
     navLoans: "Préstamos",
+    navInsights: "Análisis",
     navSettings: "Ajustes",
     openAIAssistant: "Abrir Asistente de IA",
     applyForNew: "Solicitar nuevo {{type}}",
@@ -262,6 +272,14 @@ const translations = {
     passkeyLoginFailed: "Falló el inicio de sesión con passkey.",
     passkeyConfirmationRequired: "Se requiere confirmación para '{{action}}'. Por favor, usa tu passkey para continuar.",
     actionCancelled: "Acción cancelada.",
+    // Insights Screen
+    aiPoweredInsights: "Análisis con IA",
+    aiInsightsDescription: "Descubre patrones en tus gastos y obtén consejos financieros personalizados de Nova.",
+    subscriptionTracker: "Rastreador de Suscripciones",
+    aiAnalyzingSpending: "La IA está analizando tus gastos...",
+    aiAnalyzingSubscriptions: "La IA está analizando tus transacciones en busca de pagos recurrentes...",
+    noSubscriptionsFound: "No se encontraron suscripciones recurrentes en tus transacciones recientes.",
+    monthly: "mensual",
   },
   th: {
     // Welcome/Onboarding
@@ -293,6 +311,7 @@ const translations = {
     navHome: "หน้าแรก",
     navCards: "บัตร",
     navLoans: "สินเชื่อ",
+    navInsights: "ข้อมูลเชิงลึก",
     navSettings: "ตั้งค่า",
     openAIAssistant: "เปิดผู้ช่วย AI",
     applyForNew: "สมัคร {{type}} ใหม่",
@@ -384,6 +403,14 @@ const translations = {
     passkeyLoginFailed: "การเข้าสู่ระบบด้วยพาสคีย์ล้มเหลว",
     passkeyConfirmationRequired: "ต้องการการยืนยันสำหรับ '{{action}}' กรุณาใช้พาสคีย์ของคุณเพื่อดำเนินการต่อ",
     actionCancelled: "การดำเนินการถูกยกเลิก",
+    // Insights Screen
+    aiPoweredInsights: "ข้อมูลเชิงลึกที่ขับเคลื่อนด้วย AI",
+    aiInsightsDescription: "ค้นพบรูปแบบการใช้จ่ายของคุณและรับคำแนะนำทางการเงินส่วนบุคคลจาก Nova",
+    subscriptionTracker: "เครื่องมือติดตามการสมัครสมาชิก",
+    aiAnalyzingSpending: "AI กำลังวิเคราะห์การใช้จ่ายของคุณ...",
+    aiAnalyzingSubscriptions: "AI กำลังวิเคราะห์ธุรกรรมของคุณเพื่อหาการชำระเงินที่เกิดขึ้นประจำ...",
+    noSubscriptionsFound: "ไม่พบการสมัครสมาชิกที่เกิดขึ้นประจำในธุรกรรมล่าสุดของคุณ",
+    monthly: "รายเดือน",
   },
   tl: {
     // Welcome/Onboarding
@@ -415,6 +442,7 @@ const translations = {
     navHome: "Home",
     navCards: "Mga Card",
     navLoans: "Mga Loan",
+    navInsights: "Mga Insight",
     navSettings: "Mga Setting",
     openAIAssistant: "Buksan ang AI Assistant",
     applyForNew: "Mag-apply para sa bagong {{type}}",
@@ -506,6 +534,14 @@ const translations = {
     passkeyLoginFailed: "Nabigo ang pag-login gamit ang passkey.",
     passkeyConfirmationRequired: "Kinakailangan ng kumpirmasyon para sa '{{action}}'. Mangyaring gamitin ang iyong passkey para magpatuloy.",
     actionCancelled: "Kinansela ang pagkilos.",
+     // Insights Screen
+    aiPoweredInsights: "Mga Insight na Pinapagana ng AI",
+    aiInsightsDescription: "Tuklasin ang mga pattern sa iyong paggasta at makakuha ng personalized na payo sa pananalapi mula sa Nova.",
+    subscriptionTracker: "Tagasubaybay ng Subscription",
+    aiAnalyzingSpending: "Sinusuri ng AI ang iyong mga gastusin...",
+    aiAnalyzingSubscriptions: "Sinusuri ng AI ang iyong mga transaksyon para sa mga umuulit na pagbabayad...",
+    noSubscriptionsFound: "Walang nakitang umuulit na subscription sa iyong mga kamakailang transaksyon.",
+    monthly: "buwanan",
   }
 };
 

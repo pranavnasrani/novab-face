@@ -3,7 +3,7 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BankContext } from '../App';
-import { MagicAiIcon, HomeIcon, CreditCardIcon, SettingsIcon, DollarSignIcon, PlusIcon, LogoutIcon } from './icons';
+import { MagicAiIcon, HomeIcon, CreditCardIcon, SettingsIcon, DollarSignIcon, PlusIcon, LogoutIcon, LightbulbIcon } from './icons';
 import { ChatModal } from './ChatModal';
 import { HomeScreen } from './HomeScreen';
 import { CardsScreen } from './CardsScreen';
@@ -11,8 +11,7 @@ import { SettingsScreen } from './SettingsScreen';
 import { LoansScreen } from './LoansScreen';
 import { useTranslation } from '../hooks/useTranslation';
 import { ApplicationModal } from './ApplicationModal';
-import { analyzeSpendingWithAI } from '../services/geminiService';
-import { Transaction } from '../types';
+import { InsightsScreen } from './InsightsScreen';
 
 const NavItem = ({ icon, label, isActive, onClick }: { icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void }) => (
     <button onClick={onClick} className={`flex flex-col items-center justify-center gap-1 w-16 h-16 transition-colors duration-200 ${isActive ? 'text-indigo-400' : 'text-slate-500 hover:text-slate-300'}`}>
@@ -26,43 +25,16 @@ export const Dashboard = () => {
     const { t, language } = useTranslation();
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<'home' | 'cards' | 'loans' | 'settings'>('home');
-    const [spendingData, setSpendingData] = useState<{ name: string; value: number }[]>([]);
-    const [isLoadingChart, setIsLoadingChart] = useState(true);
-
-    useEffect(() => {
-        const fetchSpendingAnalysis = async () => {
-            if (!currentUser) return;
-            setIsLoadingChart(true);
-            
-            const allUserSpendingTransactions = [
-                ...transactions.filter(tx => tx.userId === currentUser.id && tx.type === 'debit'),
-                ...currentUser.cards.flatMap(c => c.transactions)
-            ];
-
-            const thirtyDaysAgo = new Date();
-            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-            const recentTransactions = allUserSpendingTransactions.filter(tx => {
-                const txDate = new Date(tx.timestamp);
-                return txDate >= thirtyDaysAgo;
-            });
-
-            const analysisResult = await analyzeSpendingWithAI(recentTransactions, language);
-            setSpendingData(analysisResult.sort((a, b) => b.value - a.value));
-            setIsLoadingChart(false);
-        };
-
-        fetchSpendingAnalysis();
-    }, [currentUser, transactions, language]);
+    const [activeTab, setActiveTab] = useState<'home' | 'cards' | 'loans' | 'insights' | 'settings'>('home');
 
     const renderContent = () => {
         switch (activeTab) {
-            case 'home': return <HomeScreen spendingData={spendingData} isLoading={isLoadingChart} />;
+            case 'home': return <HomeScreen />;
             case 'cards': return <CardsScreen />;
             case 'loans': return <LoansScreen />;
+            case 'insights': return <InsightsScreen />;
             case 'settings': return <SettingsScreen />;
-            default: return <HomeScreen spendingData={spendingData} isLoading={isLoadingChart} />;
+            default: return <HomeScreen />;
         }
     };
     
@@ -132,6 +104,7 @@ export const Dashboard = () => {
                     <NavItem icon={<HomeIcon className="w-6 h-6" />} label={t('navHome')} isActive={activeTab === 'home'} onClick={() => setActiveTab('home')} />
                     <NavItem icon={<CreditCardIcon className="w-6 h-6" />} label={t('navCards')} isActive={activeTab === 'cards'} onClick={() => setActiveTab('cards')} />
                     <NavItem icon={<DollarSignIcon className="w-6 h-6" />} label={t('navLoans')} isActive={activeTab === 'loans'} onClick={() => setActiveTab('loans')} />
+                    <NavItem icon={<LightbulbIcon className="w-6 h-6" />} label={t('navInsights')} isActive={activeTab === 'insights'} onClick={() => setActiveTab('insights')} />
                     <NavItem icon={<SettingsIcon className="w-6 h-6" />} label={t('navSettings')} isActive={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
                 </nav>
             </footer>

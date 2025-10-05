@@ -4,7 +4,7 @@ import { useTranslation } from '../hooks/useTranslation';
 import { UserIcon, LockIcon, ChevronLeftIcon, MailIcon, PhoneIcon, FingerprintIcon } from './icons';
 
 interface RegisterScreenProps {
-  onRegister: (name: string, username: string, pin: string, email: string, phone: string, password: string, createPasskey: boolean) => Promise<boolean>;
+  onRegister: (name: string, username: string, email: string, phone: string, password: string, createPasskey: boolean) => Promise<boolean>;
   onBack: () => void;
   onRegisterSuccess: () => void;
   isPasskeySupported: boolean;
@@ -31,7 +31,6 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
   const { t } = useTranslation();
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
-  const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -48,13 +47,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
         return;
     }
     
-    if (!/^\d{4}$/.test(pin)) {
-        setError(t('pinError'));
-        return;
-    }
-
     setIsSubmitting(true);
-    const success = await onRegister(name, username, pin, email, phone, password, isPasskeySupported && wantsPasskey);
+    const success = await onRegister(name, username, email, phone, password, isPasskeySupported && wantsPasskey);
     if (success) {
       onRegisterSuccess();
     } else {
@@ -112,7 +106,6 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
               <InputField icon={<MailIcon />} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('emailPlaceholder')} disabled={isSubmitting} />
               <InputField icon={<PhoneIcon />} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('phonePlaceholder')} disabled={isSubmitting} />
               <InputField icon={<LockIcon />} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('password')} disabled={isSubmitting} />
-              <InputField icon={<LockIcon />} type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder={t('pin')} disabled={isSubmitting} />
               
               {isPasskeySupported && (
                  <div className="flex items-center justify-center gap-3 !mt-6 text-slate-300">

@@ -80,7 +80,7 @@ interface BankContextType {
     transactions: Transaction[];
     login: (username: string, password: string) => Promise<boolean>;
     logout: () => void;
-    registerUser: (name: string, username: string, pin: string, email: string, phone: string, password: string, createPasskey: boolean) => Promise<boolean>;
+    registerUser: (name: string, username: string, email: string, phone: string, password: string, createPasskey: boolean) => Promise<boolean>;
     transferMoney: (recipientIdentifier: string, amount: number) => Promise<{ success: boolean; message: string }>;
     addCardToUser: (details: CardApplicationDetails) => Promise<{ success: boolean; message: string; newCard?: Card }>;
     addLoanToUser: (details: LoanApplicationDetails) => Promise<{ success: boolean; message: string; newLoan?: Loan }>;
@@ -195,7 +195,7 @@ export default function App() {
         setAuthScreen('welcome');
     };
 
-    const registerUser = async (name: string, username: string, pin: string, email: string, phone: string, password: string, createPasskey: boolean): Promise<boolean> => {
+    const registerUser = async (name: string, username: string, email: string, phone: string, password: string, createPasskey: boolean): Promise<boolean> => {
         const usernameQuery = query(collection(db, "users"), where("username", "==", username.toLowerCase()));
         const usernameSnap = await getDocs(usernameQuery);
         if (!usernameSnap.empty) {
@@ -211,7 +211,6 @@ export default function App() {
                 username: username.toLowerCase(),
                 email,
                 phone,
-                pin,
                 balance: 1000,
                 savingsAccountNumber: generateAccountNumber(),
                 avatarUrl: `https://picsum.photos/seed/${username}/100`,

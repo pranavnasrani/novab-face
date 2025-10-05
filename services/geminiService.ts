@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, FunctionDeclaration, Type, Chat, GenerateContentResponse } from '@google/genai';
 import { Transaction, Card, Loan } from '../types';
 
@@ -388,6 +389,63 @@ Return the result as a JSON array of objects. Each object must have a "name" (st
         return JSON.parse(jsonString);
     } catch (error) {
         console.error("Error analyzing spending with AI:", error);
+        return [];
+    }
+};
+
+export const identifySubscriptions = async (transactions: Transaction[], language: 'en' | 'es' | 'th' | 'tl'): Promise<{ name: string; amount: number; }[]> => {
+    const langNameMap = {
+        en: 'English',
+        es: 'Spanish',
+        th: 'Thai',
+        tl: 'Tagalog'
+    };
+    const languageName = langNameMap[language];
+
+    const expenseTransactions = transactions
+        .filter(tx => tx.type === 'debit')
+        .map(tx => `- ${tx.description}: $${tx.amount.toFixed(2)} on ${new Date(tx.timestamp).toLocaleDateString()}`)
+        .join('\n');
+    
+    if (!expenseTransactions) {
+        return [];
+    }
+
+    const prompt = `Analyze the following list of financial transactions to identify recurring monthly subscriptions. Look for merchants that are typically subscription-based (e.g., Netflix, Spotify, gym memberships, software services) and payments with consistent amounts.
+
+Transactions:
+${expenseTransactions}
+
+Return the result as a JSON array of objects. Each object must have a "name" (string, the name of the merchant/service) and "amount" (number, the typical monthly cost). Do not include regular bills like utilities or one-time purchases. The "name" must be the merchant name, not a category.
+
+Example: [{ "name": "Netflix", "amount": 15.99 }, { "name": "Spotify", "amount": 9.99 }]`;
+
+    const responseSchema = {
+        type: Type.ARRAY,
+        items: {
+            type: Type.OBJECT,
+            properties: {
+                name: { type: Type.STRING },
+                amount: { type: Type.NUMBER },
+            },
+            required: ['name', 'amount'],
+        },
+    };
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: responseSchema
+            }
+        });
+
+        const jsonString = response.text.trim();
+        return JSON.parse(jsonString);
+    } catch (error) {
+        console.error("Error identifying subscriptions with AI:", error);
         return [];
     }
 };
