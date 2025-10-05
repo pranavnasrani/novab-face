@@ -41,12 +41,19 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
   
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !username || pin.length !== 4 || !email || !phone || !password) {
+    setError('');
+
+    if (!name || !username || !email || !phone || !password) {
         setError(t('registerError'));
         return;
     }
+    
+    if (!/^\d{4}$/.test(pin)) {
+        setError(t('pinError'));
+        return;
+    }
+
     setIsSubmitting(true);
-    setError('');
     const success = await onRegister(name, username, pin, email, phone, password, isPasskeySupported && wantsPasskey);
     if (success) {
       onRegisterSuccess();
@@ -105,7 +112,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
               <InputField icon={<MailIcon />} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('emailPlaceholder')} disabled={isSubmitting} />
               <InputField icon={<PhoneIcon />} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('phonePlaceholder')} disabled={isSubmitting} />
               <InputField icon={<LockIcon />} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('password')} disabled={isSubmitting} />
-              <InputField icon={<LockIcon />} type="password" inputMode="numeric" pattern="\\d*" value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder={t('pin')} disabled={isSubmitting} />
+              <InputField icon={<LockIcon />} type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder={t('pin')} disabled={isSubmitting} />
               
               {isPasskeySupported && (
                  <div className="flex items-center justify-center gap-3 !mt-6 text-slate-300">
