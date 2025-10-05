@@ -446,8 +446,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                             initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
                             className="bg-slate-800 rounded-2xl p-4 w-64 space-y-2"
                         >
-                            <button onClick={() => photoInputRef.current?.click()} className="w-full text-left p-3 rounded-lg hover:bg-slate-700">{t('takePhoto')}</button>
-                            <button onClick={() => uploadInputRef.current?.click()} className="w-full text-left p-3 rounded-lg hover:bg-slate-700">{t('uploadImage')}</button>
+                            <button onClick={() => photoInputRef.current?.click()} className="w-full text-left p-3 rounded-lg hover:bg-slate-700 text-white">{t('takePhoto')}</button>
+                            <button onClick={() => uploadInputRef.current?.click()} className="w-full text-left p-3 rounded-lg hover:bg-slate-700 text-white">{t('uploadImage')}</button>
                         </motion.div>
                     </motion.div>
                 )}

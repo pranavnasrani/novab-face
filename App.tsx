@@ -1,5 +1,3 @@
-
-
 import React, { useState, createContext, useEffect } from 'react';
 import { MOCK_USERS, MOCK_TRANSACTIONS, generateMockCard, generateMockLoan, generateAccountNumber } from './constants';
 import { User, Transaction, Card, Loan } from './types';
@@ -554,8 +552,13 @@ export default function App() {
                 const user = users.find(u => u.username.toLowerCase() === userHandle.toLowerCase());
 
                 if (user) {
-                    setCurrentUser(user);
-                    return true;
+                    const userPasskeys = allPasskeys[user.username] || [];
+                    // FIX: Casted `assertion` to `any` to access the `rawId` property, resolving a type error since `rawId` does not exist on the base `Credential` type.
+                    const credentialId = base64url.encode((assertion as any).rawId);
+                    if (userPasskeys.some((pk: Passkey) => pk.id === credentialId)) {
+                        setCurrentUser(user);
+                        return true;
+                    }
                 }
             }
             showToast("Passkey not recognized.", 'error');

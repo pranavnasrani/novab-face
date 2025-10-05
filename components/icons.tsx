@@ -45,6 +45,19 @@ export const SparklesIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
+export const MagicAiIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <g>
+            {/* Big star */}
+            <path d="M12 3L14 10L21 12L14 14L12 21L10 14L3 12L10 10L12 3Z" />
+            {/* Small star 1 (top-left) */}
+            <path d="M6 3L7 5L9 6L7 7L6 9L5 7L3 6L5 5L6 3Z" opacity="0.7" />
+            {/* Small star 2 (bottom-right) */}
+            <path d="M18 15L19 17L21 18L19 19L18 21L17 19L15 18L17 17L18 15Z" opacity="0.7" />
+        </g>
+    </svg>
+);
+
 export const MicrophoneIcon = ({ className }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
         <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>

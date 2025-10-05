@@ -3,7 +3,7 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BankContext } from '../App';
-import { MessageSquareIcon, HomeIcon, CreditCardIcon, SettingsIcon, DollarSignIcon, PlusIcon, LogoutIcon } from './icons';
+import { MagicAiIcon, HomeIcon, CreditCardIcon, SettingsIcon, DollarSignIcon, PlusIcon, LogoutIcon } from './icons';
 import { ChatModal } from './ChatModal';
 import { HomeScreen } from './HomeScreen';
 import { CardsScreen } from './CardsScreen';
@@ -122,7 +122,7 @@ export const Dashboard = () => {
                     className="bg-indigo-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center"
                     aria-label={t('openAIAssistant')}
                 >
-                    <MessageSquareIcon className="w-8 h-8" />
+                    <MagicAiIcon className="w-8 h-8" />
                 </motion.button>
             </div>
             
