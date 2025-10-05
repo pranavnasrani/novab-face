@@ -482,7 +482,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
     audioSources.current = new Set();
     
     sessionPromise.current = ai.live.connect({
-        model: 'gemini-live-2.5-flash-preview',
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         callbacks: {
             onopen: () => {
                 setVoiceState('listening');
