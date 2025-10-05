@@ -1,8 +1,4 @@
 
-
-
-
-
 import React from 'react';
 
 export const SendIcon = ({ className }: { className?: string }) => (
@@ -254,7 +250,7 @@ export const PiggyBankIcon = ({ className }: { className?: string }) => (
         <path d="M2 15.5V14a6 6 0 0 1 6-6h2" />
         <path d="M2.2 16.8c0 1.5 3.3 3.2 7.3 3.2 4.5 0 7.8-1.7 7.8-3.2" />
         <path d="M15 11h.01" />
-    </sv>
+    </svg>
 );
 
 export const CalendarDaysIcon = ({ className }: { className?: string }) => (
