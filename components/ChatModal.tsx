@@ -9,7 +9,6 @@ import { db } from '../services/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
 // --- Audio Helper Functions ---
-// FIX: Replaced broken encode function and added missing decode/decodeAudioData functions.
 function encode(bytes: Uint8Array) {
     let binary = '';
     const len = bytes.byteLength;
@@ -152,7 +151,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Cleanup voice session on modal close
+  // Cleanup voice session on component unmount or if voice mode is deactivated
   useEffect(() => {
       return () => {
           if (isVoiceModeActive) {
@@ -332,7 +331,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     const stopVoiceSession = async () => {
         setIsVoiceModeActive(false);
         setVoiceConnectionState('idle');
-    
+
         if (sessionPromiseRef.current) {
             try {
                 const session = await sessionPromiseRef.current;
@@ -348,10 +347,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         mediaStreamRef.current = null;
     
         if (inputAudioContextRef.current && inputAudioContextRef.current.state !== 'closed') {
-            inputAudioContextRef.current.close();
+            inputAudioContextRef.current.close().catch(console.error);
         }
         if (outputAudioContextRef.current && outputAudioContextRef.current.state !== 'closed') {
-            outputAudioContextRef.current.close();
+            outputAudioContextRef.current.close().catch(console.error);
         }
         inputAudioContextRef.current = null;
         outputAudioContextRef.current = null;
@@ -384,7 +383,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
 
             mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-            // Construct System Instruction
             const langNameMap = { en: 'English', es: 'Spanish', th: 'Thai', tl: 'Tagalog' };
             const langName = langNameMap[language];
             const contactsInstruction = contacts.length > 0 ? `Available contacts by name are: ${contacts.join(', ')}.` : "No other users registered.";
@@ -412,15 +410,16 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                 callbacks: {
                     onopen: () => {
                         setVoiceConnectionState('connected');
-                        const source = inputAudioContextRef.current!.createMediaStreamSource(mediaStreamRef.current!);
-                        scriptProcessorRef.current = inputAudioContextRef.current!.createScriptProcessor(4096, 1, 1);
+                        if (!inputAudioContextRef.current || !mediaStreamRef.current) return;
+                        const source = inputAudioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
+                        scriptProcessorRef.current = inputAudioContextRef.current.createScriptProcessor(4096, 1, 1);
                         scriptProcessorRef.current.onaudioprocess = (audioProcessingEvent) => {
                             const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
                             const pcmBlob = createBlob(inputData);
                             sessionPromiseRef.current?.then((session) => session.sendRealtimeInput({ media: pcmBlob }));
                         };
                         source.connect(scriptProcessorRef.current);
-                        scriptProcessorRef.current.connect(inputAudioContextRef.current!.destination);
+                        scriptProcessorRef.current.connect(inputAudioContextRef.current.destination);
                     },
                     onmessage: async (message: LiveServerMessage) => {
                         const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
@@ -492,7 +491,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                         setVoiceConnectionState('error');
                         stopVoiceSession();
                     },
-                    onclose: () => { stopVoiceSession(); },
+                    onclose: () => { 
+                        stopVoiceSession(); 
+                    },
                 },
                 config: {
                     systemInstruction,
@@ -566,7 +567,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const getVoiceModePlaceholder = () => {
       switch(voiceConnectionState) {
           case 'connecting': return t('connecting');
-          case 'connected': return liveTranscript.user ? liveTranscript.user : t('speakNow');
+          case 'connected': return liveTranscript.user ? `"${liveTranscript.user}"` : t('speakNow');
           case 'error': return t('chatError');
           default: return t('askNova');
       }
@@ -658,11 +659,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
               {isVoiceModeActive ? (
                 <div className="flex items-center justify-between min-h-[52px] px-2">
                   <div className="flex flex-col flex-grow overflow-hidden pr-2">
-                      <p className="text-slate-200 font-medium text-sm whitespace-normal break-words">{getVoiceModePlaceholder()}</p>
+                      <p className="text-slate-200 font-medium text-sm whitespace-normal break-words italic">{getVoiceModePlaceholder()}</p>
+                       {liveTranscript.model && <p className="text-slate-400 text-xs mt-1">{`Nova: "${liveTranscript.model}"`}</p>}
                   </div>
-                  <button onClick={stopVoiceSession} className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors">
-                      <XCircleIcon className="w-6 h-6" />
-                  </button>
+                  <motion.button 
+                    animate={{ scale: voiceConnectionState === 'connected' ? [1, 1.1, 1] : 1 }}
+                    transition={{ duration: 1, repeat: Infinity }}
+                    onClick={stopVoiceSession} 
+                    className="w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0 bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors"
+                  >
+                      <XCircleIcon className="w-7 h-7" />
+                  </motion.button>
                 </div>
               ) : (
                   <form onSubmit={handleFormSubmit} className="flex items-center gap-2">
