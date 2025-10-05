@@ -1,3 +1,5 @@
+
+
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from '../hooks/useTranslation';
@@ -6,7 +8,6 @@ import { UserIcon, LockIcon, ChevronLeftIcon, MailIcon, PhoneIcon } from './icon
 interface RegisterScreenProps {
   onRegister: (name: string, username: string, pin: string, email: string, phone: string, password: string) => Promise<boolean>;
   onBack: () => void;
-  onRegisterSuccess: () => void;
 }
 
 const InputField = ({ icon, ...props }: { icon: React.ReactNode } & React.InputHTMLAttributes<HTMLInputElement>) => (
@@ -26,7 +27,7 @@ const InputField = ({ icon, ...props }: { icon: React.ReactNode } & React.InputH
   </motion.div>
 );
 
-export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBack, onRegisterSuccess }) => {
+export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBack }) => {
   const { t } = useTranslation();
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
@@ -46,12 +47,10 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
     setIsSubmitting(true);
     setError('');
     const success = await onRegister(name, username, pin, email, phone, password);
-    if (success) {
-      onRegisterSuccess();
-    } else {
+    if (!success) {
       setError(t('registerErrorUsernameTaken'));
-      setIsSubmitting(false);
     }
+    setIsSubmitting(false);
   };
 
   const formVariants = {
@@ -103,7 +102,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
               <InputField icon={<MailIcon />} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('emailPlaceholder')} disabled={isSubmitting} />
               <InputField icon={<PhoneIcon />} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('phonePlaceholder')} disabled={isSubmitting} />
               <InputField icon={<LockIcon />} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('password')} disabled={isSubmitting} />
-              <InputField icon={<LockIcon />} type="password" inputMode="numeric" pattern="\\d*" value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder={t('pin')} disabled={isSubmitting} />
+              <InputField icon={<LockIcon />} type="password" inputMode="numeric" pattern="\d*" value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder={t('pin')} disabled={isSubmitting} />
               {error && <p className="text-red-400 text-sm text-center !mt-4">{error}</p>}
               <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-all text-lg" disabled={isSubmitting}>
                 {isSubmitting ? t('submitting') : t('getStarted')}
