@@ -3,14 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights } from '../services/geminiService';
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
 import { SparklesIcon, MicrophoneIcon, SendIcon, CameraIcon, XCircleIcon } from './icons';
-// FIX: The `LiveSession` type is not publicly exported from the `@google/genai` package.
 import { Chat, LiveServerMessage, Modality, Blob as GenAI_Blob } from '@google/genai';
-import { Transaction, Card, Loan, User } from '../types';
 import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
 // --- Audio Helper Functions ---
+// FIX: Replaced broken encode function and added missing decode/decodeAudioData functions.
 function encode(bytes: Uint8Array) {
     let binary = '';
     const len = bytes.byteLength;
@@ -21,27 +20,32 @@ function encode(bytes: Uint8Array) {
 }
 
 function decode(base64: string) {
-    const binaryString = atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
 }
 
-async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
-    const dataInt16 = new Int16Array(data.buffer);
-    const frameCount = dataInt16.length / numChannels;
-    const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
 
-    for (let channel = 0; channel < numChannels; channel++) {
-        const channelData = buffer.getChannelData(channel);
-        for (let i = 0; i < frameCount; i++) {
-            channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
-        }
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
     }
-    return buffer;
+  }
+  return buffer;
 }
 
 function createBlob(data: Float32Array): GenAI_Blob {
@@ -101,7 +105,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const [isVoiceModeActive, setIsVoiceModeActive] = useState(false);
   const [voiceConnectionState, setVoiceConnectionState] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
   const [liveTranscript, setLiveTranscript] = useState({ user: '', model: '' });
-  // FIX: The `LiveSession` type is not publicly exported from the `@google/genai` package. Using `any` as a fallback to resolve the type error.
   const sessionPromiseRef = useRef<Promise<any> | null>(null);
   
   // Audio Refs
@@ -159,10 +162,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   }, [isVoiceModeActive]);
 
 
-  // FIX: Updated the function to accept an optional `args` property to handle `FunctionCall` objects from live sessions that may not include arguments, resolving a TypeScript error.
   const handleFunctionCall = async (call: { name?: string, args?: any }): Promise<{ success: boolean; message: string; resultForModel: object }> => {
-      // FIX: The 'name' property on a FunctionCall from a live session can be optional.
-      // We must check for its existence before processing to prevent runtime errors and satisfy TypeScript.
       if (!call.name) {
           const message = "Tool call received without a function name.";
           return { success: false, message, resultForModel: { success: false, error: message } };
@@ -329,75 +329,75 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const stopVoiceSession = async () => {
-    setIsVoiceModeActive(false);
-    setVoiceConnectionState('idle');
+    const stopVoiceSession = async () => {
+        setIsVoiceModeActive(false);
+        setVoiceConnectionState('idle');
+    
+        if (sessionPromiseRef.current) {
+            try {
+                const session = await sessionPromiseRef.current;
+                session.close();
+            } catch (e) { console.error("Error closing session:", e); }
+            sessionPromiseRef.current = null;
+        }
+        
+        scriptProcessorRef.current?.disconnect();
+        scriptProcessorRef.current = null;
+        
+        mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+    
+        if (inputAudioContextRef.current && inputAudioContextRef.current.state !== 'closed') {
+            inputAudioContextRef.current.close();
+        }
+        if (outputAudioContextRef.current && outputAudioContextRef.current.state !== 'closed') {
+            outputAudioContextRef.current.close();
+        }
+        inputAudioContextRef.current = null;
+        outputAudioContextRef.current = null;
+    
+        audioSourcesRef.current.forEach(source => {
+            try { source.stop(); } catch (e) {}
+        });
+        audioSourcesRef.current.clear();
+        nextStartTimeRef.current = 0;
 
-    if (sessionPromiseRef.current) {
+        localUserTranscriptRef.current = '';
+        localModelTranscriptRef.current = '';
+        setLiveTranscript({ user: '', model: '' });
+    };
+
+    const startVoiceSession = async () => {
+        if (!currentUser || !ai || !contactsLoaded) return;
+        setIsVoiceModeActive(true);
+        setVoiceConnectionState('connecting');
+
         try {
-            const session = await sessionPromiseRef.current;
-            session.close();
-        } catch (e) { console.error("Error closing session:", e); }
-    }
-    
-    scriptProcessorRef.current?.disconnect();
-    scriptProcessorRef.current = null;
-    
-    mediaStreamRef.current?.getTracks().forEach(track => track.stop());
-    mediaStreamRef.current = null;
+            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+            inputAudioContextRef.current = new AudioContext({ sampleRate: 16000 });
+            outputAudioContextRef.current = new AudioContext({ sampleRate: 24000 });
+            
+            await Promise.all([
+                inputAudioContextRef.current.state === 'suspended' ? inputAudioContextRef.current.resume() : Promise.resolve(),
+                outputAudioContextRef.current.state === 'suspended' ? outputAudioContextRef.current.resume() : Promise.resolve()
+            ]);
 
-    inputAudioContextRef.current?.close();
-    outputAudioContextRef.current?.close();
-    inputAudioContextRef.current = null;
-    outputAudioContextRef.current = null;
+            mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-    audioSourcesRef.current.forEach(source => source.stop());
-    audioSourcesRef.current.clear();
-    nextStartTimeRef.current = 0;
-    sessionPromiseRef.current = null;
-    localUserTranscriptRef.current = '';
-    localModelTranscriptRef.current = '';
-    setLiveTranscript({ user: '', model: '' });
-  };
-
-  const startVoiceSession = async () => {
-      if (!currentUser || !ai || !contactsLoaded) return;
-      setIsVoiceModeActive(true);
-      setVoiceConnectionState('connecting');
-
-      try {
-          // @ts-ignore
-          inputAudioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-          // @ts-ignore
-          outputAudioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-
-          if (inputAudioContextRef.current.state === 'suspended') {
-              await inputAudioContextRef.current.resume();
-          }
-          if (outputAudioContextRef.current.state === 'suspended') {
-              await outputAudioContextRef.current.resume();
-          }
-
-          mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-          const langNameMap = {
-            en: 'English', es: 'Spanish', th: 'Thai', tl: 'Tagalog'
-          };
-          const langName = langNameMap[language];
-          const contactsInstruction = contacts.length > 0
-              ? `Available contacts by name are: ${contacts.join(', ')}.`
-              : "No other users registered.";
-          const activeLoans = currentUser.loans.filter(l => l.status === 'Active');
-          let loanInstructions = 'User has no active loans.';
-          if (activeLoans.length === 1) {
-              loanInstructions = `User has one active loan with ID: '${activeLoans[0].id}'.`;
-          } else if (activeLoans.length > 1) {
-              const loanDescriptions = activeLoans.map((l) => `a loan for ${formatCurrency(l.loanAmount)} (ID: '${l.id}')`).join('; ');
-              loanInstructions = `User has multiple active loans: ${loanDescriptions}. You must ask for clarification.`;
-          }
-          const cardDescriptions = currentUser.cards.length > 0 ? `User has: ${currentUser.cards.map(c => `${c.cardType} ending in ${c.cardNumber.slice(-4)}`).join(', ')}.` : "User has no credit cards.";
-
-          const systemInstruction = `You are Nova, a friendly and concise voice-based banking assistant for a user named ${currentUser.name}.
+            // Construct System Instruction
+            const langNameMap = { en: 'English', es: 'Spanish', th: 'Thai', tl: 'Tagalog' };
+            const langName = langNameMap[language];
+            const contactsInstruction = contacts.length > 0 ? `Available contacts by name are: ${contacts.join(', ')}.` : "No other users registered.";
+            const activeLoans = currentUser.loans.filter(l => l.status === 'Active');
+            let loanInstructions = 'User has no active loans.';
+            if (activeLoans.length === 1) {
+                loanInstructions = `User has one active loan with ID: '${activeLoans[0].id}'.`;
+            } else if (activeLoans.length > 1) {
+                const loanDescriptions = activeLoans.map((l) => `a loan for ${formatCurrency(l.loanAmount)} (ID: '${l.id}')`).join('; ');
+                loanInstructions = `User has multiple active loans: ${loanDescriptions}. You must ask for clarification.`;
+            }
+            const cardDescriptions = currentUser.cards.length > 0 ? `User has: ${currentUser.cards.map(c => `${c.cardType} ending in ${c.cardNumber.slice(-4)}`).join(', ')}.` : "User has no credit cards.";
+            const systemInstruction = `You are Nova, a friendly and concise voice-based banking assistant for a user named ${currentUser.name}.
 - Your main goal is to help with banking tasks using the available tools.
 - Keep your responses short and conversational, suitable for voice interaction.
 - The user is speaking ${langName}. You MUST respond exclusively in ${langName}.
@@ -407,130 +407,112 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   - Cards: ${cardDescriptions}
   - Loans: ${loanInstructions}`;
 
-
-          sessionPromiseRef.current = ai.live.connect({
-              model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-              callbacks: {
-                  onopen: () => {
-                      setVoiceConnectionState('connected');
-                      const source = inputAudioContextRef.current!.createMediaStreamSource(mediaStreamRef.current!);
-                      scriptProcessorRef.current = inputAudioContextRef.current!.createScriptProcessor(4096, 1, 1);
-                      scriptProcessorRef.current.onaudioprocess = (audioProcessingEvent) => {
-                          const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                          const pcmBlob = createBlob(inputData);
-                          sessionPromiseRef.current?.then((session) => {
-                              session.sendRealtimeInput({ media: pcmBlob });
-                          });
-                      };
-                      source.connect(scriptProcessorRef.current);
-                      scriptProcessorRef.current.connect(inputAudioContextRef.current!.destination);
-                  },
-                  onmessage: async (message: LiveServerMessage) => {
-                      // Audio
-                      const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
-                      if (base64Audio) {
-                          nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputAudioContextRef.current!.currentTime);
-                          const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContextRef.current!, 24000, 1);
-                          const source = outputAudioContextRef.current!.createBufferSource();
-                          source.buffer = audioBuffer;
-                          source.connect(outputAudioContextRef.current!.destination);
-                          source.addEventListener('ended', () => audioSourcesRef.current.delete(source));
-                          source.start(nextStartTimeRef.current);
-                          nextStartTimeRef.current += audioBuffer.duration;
-                          audioSourcesRef.current.add(source);
-                      }
-                      
-                      // Transcription
-                      if (message.serverContent?.inputTranscription) {
-                          localUserTranscriptRef.current += message.serverContent.inputTranscription.text;
-                          setLiveTranscript({ user: localUserTranscriptRef.current, model: localModelTranscriptRef.current });
-                      } else if (message.serverContent?.outputTranscription) {
-                          localModelTranscriptRef.current += message.serverContent.outputTranscription.text;
-                          setLiveTranscript({ user: localUserTranscriptRef.current, model: localModelTranscriptRef.current });
-                      }
-
-                      // Turn Completion
-                      if (message.serverContent?.turnComplete) {
-                          const userText = localUserTranscriptRef.current.trim();
-                          const modelText = localModelTranscriptRef.current.trim();
-                          if (userText) setMessages(prev => [...prev, { id: messageId.current++, sender: 'user', text: userText }]);
-                          if (modelText) setMessages(prev => [...prev, { id: messageId.current++, sender: 'ai', text: modelText }]);
-                          localUserTranscriptRef.current = ''; localModelTranscriptRef.current = '';
-                          setLiveTranscript({ user: '', model: '' });
-                      }
-                      
-                      // Tool Calls
-                      if (message.toolCall) {
-                        for (const call of message.toolCall.functionCalls) {
-                            const sensitiveActions = ['initiatePayment', 'makeAccountPayment', 'applyForCreditCard', 'applyForLoan', 'requestPaymentExtension'];
-                            let verified = true;
-                            if (call.name && sensitiveActions.includes(call.name)) {
-                                setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: t('passkeyConfirmationRequired', { action: call.name }) }]);
-                                verified = await verifyCurrentUserWithPasskey();
-                                if (!verified) {
-                                    setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: t('actionCancelled') }]);
-                                }
-                            }
-
-                            if (!verified) {
-                                sessionPromiseRef.current?.then(session => {
-                                    session.sendToolResponse({
-                                        functionResponses: [{
-                                            id: call.id,
-                                            name: call.name,
-                                            response: { error: 'User authentication failed or was cancelled.' }
-                                        }]
-                                    });
-                                });
-                                continue;
-                            }
-
-                            const { message: systemMessage, resultForModel } = await handleFunctionCall(call);
-                            setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: systemMessage }]);
-
-                            sessionPromiseRef.current?.then(session => {
-                                session.sendToolResponse({
-                                    functionResponses: [{ id: call.id, name: call.name, response: { result: resultForModel } }]
-                                });
-                            });
+            sessionPromiseRef.current = ai.live.connect({
+                model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+                callbacks: {
+                    onopen: () => {
+                        setVoiceConnectionState('connected');
+                        const source = inputAudioContextRef.current!.createMediaStreamSource(mediaStreamRef.current!);
+                        scriptProcessorRef.current = inputAudioContextRef.current!.createScriptProcessor(4096, 1, 1);
+                        scriptProcessorRef.current.onaudioprocess = (audioProcessingEvent) => {
+                            const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                            const pcmBlob = createBlob(inputData);
+                            sessionPromiseRef.current?.then((session) => session.sendRealtimeInput({ media: pcmBlob }));
+                        };
+                        source.connect(scriptProcessorRef.current);
+                        scriptProcessorRef.current.connect(inputAudioContextRef.current!.destination);
+                    },
+                    onmessage: async (message: LiveServerMessage) => {
+                        const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
+                        if (base64Audio && outputAudioContextRef.current) {
+                            nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputAudioContextRef.current.currentTime);
+                            const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContextRef.current, 24000, 1);
+                            const sourceNode = outputAudioContextRef.current.createBufferSource();
+                            sourceNode.buffer = audioBuffer;
+                            sourceNode.connect(outputAudioContextRef.current.destination);
+                            sourceNode.addEventListener('ended', () => audioSourcesRef.current.delete(sourceNode));
+                            sourceNode.start(nextStartTimeRef.current);
+                            nextStartTimeRef.current += audioBuffer.duration;
+                            audioSourcesRef.current.add(sourceNode);
                         }
-                      }
 
-                      // Interruption
-                      if (message.serverContent?.interrupted) {
-                        audioSourcesRef.current.forEach(source => source.stop());
-                        audioSourcesRef.current.clear();
-                        nextStartTimeRef.current = 0;
-                      }
-                  },
-                  onerror: (e: ErrorEvent) => {
-                      console.error('Live session error:', e);
-                      setVoiceConnectionState('error');
-                      stopVoiceSession();
-                  },
-                  onclose: () => { stopVoiceSession(); },
-              },
-              config: {
-                  systemInstruction: systemInstruction,
-                  responseModalities: [Modality.AUDIO],
-                  speechConfig: {
-                    voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } }
-                  },
-                  inputAudioTranscription: {},
-                  outputAudioTranscription: {},
-                  tools: [{ functionDeclarations: allFunctionDeclarations }]
-              },
-          });
-      } catch (error) {
-          console.error("Failed to start voice session:", error);
-          let errorMessage = t('voiceError');
-          if (error instanceof Error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError')) {
-              errorMessage = t('micAccessDenied');
-          }
-          setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: errorMessage }]);
-          setVoiceConnectionState('error');
-      }
-  };
+                        if (message.serverContent?.inputTranscription) {
+                            localUserTranscriptRef.current += message.serverContent.inputTranscription.text;
+                            setLiveTranscript({ user: localUserTranscriptRef.current, model: localModelTranscriptRef.current });
+                        } else if (message.serverContent?.outputTranscription) {
+                            localModelTranscriptRef.current += message.serverContent.outputTranscription.text;
+                            setLiveTranscript({ user: localUserTranscriptRef.current, model: localModelTranscriptRef.current });
+                        }
+
+                        if (message.serverContent?.turnComplete) {
+                            const userText = localUserTranscriptRef.current.trim();
+                            const modelText = localModelTranscriptRef.current.trim();
+                            if (userText) setMessages(prev => [...prev, { id: messageId.current++, sender: 'user', text: userText }]);
+                            if (modelText) setMessages(prev => [...prev, { id: messageId.current++, sender: 'ai', text: modelText }]);
+                            localUserTranscriptRef.current = ''; localModelTranscriptRef.current = '';
+                            setLiveTranscript({ user: '', model: '' });
+                        }
+
+                        if (message.toolCall) {
+                            for (const call of message.toolCall.functionCalls) {
+                                const sensitiveActions = ['initiatePayment', 'makeAccountPayment', 'applyForCreditCard', 'applyForLoan', 'requestPaymentExtension'];
+                                let verified = true;
+                                if (call.name && sensitiveActions.includes(call.name)) {
+                                    setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: t('passkeyConfirmationRequired', { action: call.name }) }]);
+                                    verified = await verifyCurrentUserWithPasskey();
+                                    if (!verified) {
+                                        setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: t('actionCancelled') }]);
+                                    }
+                                }
+
+                                if (!verified) {
+                                    sessionPromiseRef.current?.then(session => session.sendToolResponse({ functionResponses: {
+                                        id: call.id, name: call.name, response: { result: { error: 'User authentication failed or was cancelled.' }}
+                                    }}));
+                                    continue;
+                                }
+
+                                const { message: systemMessage, resultForModel } = await handleFunctionCall(call);
+                                setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: systemMessage }]);
+                                sessionPromiseRef.current?.then(session => session.sendToolResponse({ functionResponses: {
+                                    id: call.id, name: call.name, response: { result: resultForModel }
+                                }}));
+                            }
+                        }
+
+                        if (message.serverContent?.interrupted) {
+                            audioSourcesRef.current.forEach(source => source.stop());
+                            audioSourcesRef.current.clear();
+                            nextStartTimeRef.current = 0;
+                        }
+                    },
+                    onerror: (e: ErrorEvent) => {
+                        console.error('Live session error:', e);
+                        setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: t('chatError') }]);
+                        setVoiceConnectionState('error');
+                        stopVoiceSession();
+                    },
+                    onclose: () => { stopVoiceSession(); },
+                },
+                config: {
+                    systemInstruction,
+                    responseModalities: [Modality.AUDIO],
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+                    inputAudioTranscription: {},
+                    outputAudioTranscription: {},
+                    tools: [{ functionDeclarations: allFunctionDeclarations }]
+                },
+            });
+        } catch (error) {
+            console.error("Failed to start voice session:", error);
+            const errorMessage = error instanceof Error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError')
+                ? t('micAccessDenied')
+                : t('voiceError');
+            setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: errorMessage }]);
+            setVoiceConnectionState('error');
+            setIsVoiceModeActive(false);
+        }
+    };
 
   const toggleVoiceMode = () => {
     if (isVoiceModeActive) {
