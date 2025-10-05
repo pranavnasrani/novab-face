@@ -1,8 +1,10 @@
-import React, { useState, useRef, useEffect, useContext, useCallback } from 'react';
+
+import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights, ai } from '../services/geminiService';
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
 import { SparklesIcon, SendIcon, CameraIcon, MicrophoneIcon, StopCircleIcon } from './icons';
+// FIX: The `LiveSession` type is not exported by the `@google/genai` library and was removed from the import. Its type will be inferred later.
 import { Chat, LiveServerMessage, Modality } from '@google/genai';
 import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/firebase';
@@ -24,8 +26,6 @@ type Message = {
   sender: 'user' | 'ai' | 'system';
   text: string;
 };
-
-type VoiceState = 'idle' | 'permission' | 'connecting' | 'listening' | 'speaking' | 'processing' | 'stopping';
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -82,12 +82,17 @@ async function decodeAudioData(
   return buffer;
 }
 
+// Inlined AudioWorklet processor code to avoid file loading issues.
 const audioProcessorCode = `
 class AudioProcessor extends AudioWorkletProcessor {
-  constructor() { super(); }
+  constructor() {
+    super();
+  }
   process(inputs) {
     const inputChannelData = inputs[0][0];
-    if (!inputChannelData) return true;
+    if (!inputChannelData) {
+      return true;
+    }
     const pcmData = new Int16Array(inputChannelData.length);
     for (let i = 0; i < inputChannelData.length; i++) {
       const s = Math.max(-1, Math.min(1, inputChannelData[i]));
@@ -114,24 +119,23 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const messageId = useRef(0);
   
   // Voice mode state and refs
-  const [voiceState, setVoiceState] = useState<VoiceState>('idle');
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [voiceState, setVoiceState] = useState<'idle' | 'connecting' | 'listening' | 'processing' | 'speaking'>('idle');
   const [liveInputTranscription, setLiveInputTranscription] = useState('');
   const [liveOutputTranscription, setLiveOutputTranscription] = useState('');
-
   const finalInputTranscription = useRef('');
   const finalOutputTranscription = useRef('');
-  
-  const voiceStateRef = useRef(voiceState);
-  useEffect(() => { voiceStateRef.current = voiceState }, [voiceState]);
 
-  const sessionRef = useRef<Awaited<ReturnType<typeof ai.live.connect>> | null>(null);
-  const inputAudioContextRef = useRef<AudioContext | null>(null);
-  const outputAudioContextRef = useRef<AudioContext | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const nextStartTimeRef = useRef(0);
-  const audioSourcesRef = useRef(new Set<AudioBufferSourceNode>());
+  // FIX: The `LiveSession` type is not exported from the `@google/genai` package. The type is now inferred from the return type of `ai.live.connect` to ensure type safety.
+  const sessionPromise = useRef<ReturnType<typeof ai.live.connect> | null>(null);
+  const inputAudioContext = useRef<AudioContext | null>(null);
+  const outputAudioContext = useRef<AudioContext | null>(null);
+  const mediaStream = useRef<MediaStream | null>(null);
+  const audioWorkletNode = useRef<AudioWorkletNode | null>(null);
+  const mediaStreamSource = useRef<MediaStreamAudioSourceNode | null>(null);
+  const nextStartTime = useRef(0);
+  const audioSources = useRef(new Set<AudioBufferSourceNode>());
+
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -156,18 +160,13 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         setMessages([{ id: messageId.current++, sender: 'ai', text: t('chatGreeting', { name: currentUser?.name.split(' ')[0] })}]);
         setInputValue('');
         setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
-    }
-  }, [isOpen, currentUser, language, contacts, contactsLoaded]);
-
-  // Cleanup effect for when the modal is closed
-  useEffect(() => {
-    if (!isOpen) {
-        if (voiceStateRef.current !== 'idle') {
+    } else if (!isOpen) {
+        setChat(null);
+        if (isVoiceMode) {
             stopVoiceMode();
         }
-        setChat(null); // Reset text chat session as well
     }
-  }, [isOpen]);
+  }, [isOpen, currentUser, language, contacts, contactsLoaded]);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -435,12 +434,12 @@ Respond concisely and naturally, as you are speaking. All function calling capab
 
 6.  **Credit Card Application**:
     - If the user expresses intent to "apply for a credit card," you MUST use the 'applyForCreditCard' tool.
-    - Before calling the tool, you MUST collect all required information: address, date of birth, employmentStatus, employer, and annual income. You already know the user's name is ${currentUser.name}, so do not ask for it.
+    - Before calling the tool, you MUST collect all required information: address, date of birth, employment status, employer, and annual income. You already know the user's name is ${currentUser.name}, so do not ask for it.
     - Ask for any missing information conversationally.
 
 7.  **Loan Application**:
     - If the user wants to "apply for a loan," you MUST use the 'applyForLoan' tool.
-    - Before calling the tool, collect the desired loan amount, the loan term in months, and the other personal/financial details: address, date of birth, employmentStatus, and annual income. You already know the user's name is ${currentUser.name}, so do not ask for it.
+    - Before calling the tool, collect the desired loan amount, the loan term in months, and the other personal/financial details: address, date of birth, employment status, and annual income. You already know the user's name is ${currentUser.name}, so do not ask for it.
     - Ask for missing information conversationally.
 
 8.  **General Conversation**:
@@ -449,243 +448,198 @@ Respond concisely and naturally, as you are speaking. All function calling capab
     - VERY IMPORTANT: You MUST respond exclusively in ${langName}. Do not switch languages.`;
   };
 
+
   // Voice Mode Functions
-  const stopVoiceMode = useCallback(() => {
-    if (voiceStateRef.current === 'idle' || voiceStateRef.current === 'stopping') {
-        return;
-    }
-    setVoiceState('stopping');
+  const stopVoiceMode = () => {
+    setIsVoiceMode(false);
+    setVoiceState('idle');
+    sessionPromise.current?.then(s => s.close());
+    sessionPromise.current = null;
     
-    // 1. Tear down the audio pipeline from the source first to prevent new data.
-    mediaStreamRef.current?.getTracks().forEach(track => track.stop());
-    if (mediaStreamSourceRef.current && audioWorkletNodeRef.current) {
-        mediaStreamSourceRef.current.disconnect(audioWorkletNodeRef.current);
-    }
-    if (audioWorkletNodeRef.current && inputAudioContextRef.current) {
-        audioWorkletNodeRef.current.disconnect(inputAudioContextRef.current.destination);
-    }
+    mediaStream.current?.getTracks().forEach(track => track.stop());
+    mediaStream.current = null;
     
-    // 2. Close the WebSocket connection.
-    sessionRef.current?.close();
+    audioWorkletNode.current?.port.close();
+    audioWorkletNode.current?.disconnect();
+    audioWorkletNode.current = null;
+    
+    mediaStreamSource.current?.disconnect();
+    mediaStreamSource.current = null;
+    
+    inputAudioContext.current?.close();
+    outputAudioContext.current?.close();
+    inputAudioContext.current = null;
+    outputAudioContext.current = null;
 
-    // 3. Clean up remaining resources.
-    inputAudioContextRef.current?.close();
-    outputAudioContextRef.current?.close();
-    audioSourcesRef.current.forEach(s => s.stop());
-    audioSourcesRef.current.clear();
-
-    // 4. Reset all refs to null.
-    mediaStreamRef.current = null;
-    mediaStreamSourceRef.current = null;
-    audioWorkletNodeRef.current = null;
-    sessionRef.current = null;
-    inputAudioContextRef.current = null;
-    outputAudioContextRef.current = null;
-    nextStartTimeRef.current = 0;
-
-    // 5. Reset UI state.
+    nextStartTime.current = 0;
+    audioSources.current.forEach(s => s.stop());
+    audioSources.current.clear();
+    
     setLiveInputTranscription('');
     setLiveOutputTranscription('');
     finalInputTranscription.current = '';
     finalOutputTranscription.current = '';
-    setVoiceState('idle');
-  }, []);
+  };
 
-  const startVoiceMode = useCallback(async () => {
-    if (voiceStateRef.current !== 'idle') return;
-
-    setVoiceState('permission');
-    
-    // 1. Get microphone permission
-    let stream;
+  const startVoiceMode = async () => {
     try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (voiceStateRef.current !== 'permission') { // Check if user stopped during prompt
-            stream.getTracks().forEach(t => t.stop());
-            return;
-        }
-        mediaStreamRef.current = stream;
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaStream.current = stream;
     } catch (err) {
         showToast(t('micAccessDenied'), 'error');
-        stopVoiceMode();
         return;
     }
 
+    setIsVoiceMode(true);
     setVoiceState('connecting');
-    
-    // 2. Set up audio contexts and worklet
+
+    // FIX: Cast `window` to `any` to allow access to the vendor-prefixed `webkitAudioContext` for older browser compatibility, resolving TypeScript errors.
+    inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+    outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+
     try {
-        inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-        outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-        nextStartTimeRef.current = 0;
-        audioSourcesRef.current = new Set();
         const blob = new Blob([audioProcessorCode], { type: 'application/javascript' });
         const objectURL = URL.createObjectURL(blob);
-        await inputAudioContextRef.current.audioWorklet.addModule(objectURL);
+        await inputAudioContext.current.audioWorklet.addModule(objectURL);
         URL.revokeObjectURL(objectURL);
     } catch (e) {
-        console.error('Failed to set up audio contexts or worklet', e);
+        console.error('Failed to load audio worklet module', e);
         showToast(t('voiceError'), 'error');
         stopVoiceMode();
         return;
     }
+    
+    nextStartTime.current = 0;
+    audioSources.current = new Set();
+    
+    sessionPromise.current = ai.live.connect({
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        callbacks: {
+            onopen: () => {
+                setVoiceState('listening');
+                if (!inputAudioContext.current || !mediaStream.current) return;
+                
+                mediaStreamSource.current = inputAudioContext.current.createMediaStreamSource(mediaStream.current);
+                audioWorkletNode.current = new AudioWorkletNode(inputAudioContext.current, 'audio-processor');
 
-    // 3. Connect to Gemini Live API
-    try {
-        const session = await ai.live.connect({
-            model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-            callbacks: {
-                onopen: () => {
-                    if (voiceStateRef.current !== 'connecting') return;
-                    setVoiceState('listening');
-
-                    // Set up audio graph now that connection is open
-                    if (!inputAudioContextRef.current || !mediaStreamRef.current) return;
-                    mediaStreamSourceRef.current = inputAudioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
-                    audioWorkletNodeRef.current = new AudioWorkletNode(inputAudioContextRef.current, 'audio-processor');
-
-                    audioWorkletNodeRef.current.port.onmessage = (event) => {
-                        // CRITICAL GUARD: Only send data if we are in a state that should be sending data.
-                        if (voiceStateRef.current !== 'listening' && voiceStateRef.current !== 'speaking') return;
-                        
-                        if (sessionRef.current) {
-                           const pcmBuffer = event.data as ArrayBuffer;
-                            const pcmBlob: GeminiBlob = {
-                                data: encode(new Uint8Array(pcmBuffer)),
-                                mimeType: `audio/pcm;rate=16000`,
-                            };
-                            sessionRef.current.sendRealtimeInput({ media: pcmBlob });
-                        }
+                audioWorkletNode.current.port.onmessage = (event) => {
+                    const pcmBuffer = event.data as ArrayBuffer;
+                    const pcmBlob: GeminiBlob = {
+                        data: encode(new Uint8Array(pcmBuffer)),
+                        mimeType: `audio/pcm;rate=${inputAudioContext.current?.sampleRate || 16000}`,
                     };
+                    sessionPromise.current?.then((session) => {
+                        session.sendRealtimeInput({ media: pcmBlob });
+                    });
+                };
 
-                    mediaStreamSourceRef.current.connect(audioWorkletNodeRef.current);
-                    audioWorkletNodeRef.current.connect(inputAudioContextRef.current.destination);
-                },
-                onmessage: async (message: LiveServerMessage) => {
-                    if (voiceStateRef.current === 'stopping' || voiceStateRef.current === 'idle') return;
+                mediaStreamSource.current.connect(audioWorkletNode.current);
+                audioWorkletNode.current.connect(inputAudioContext.current.destination);
+            },
+            onmessage: async (message: LiveServerMessage) => {
+                if (message.serverContent?.inputTranscription) {
+                    const text = message.serverContent.inputTranscription.text;
+                    setLiveInputTranscription(prev => prev + text);
+                    finalInputTranscription.current += text;
+                }
+                if (message.serverContent?.outputTranscription) {
+                    const text = message.serverContent.outputTranscription.text;
+                    setLiveOutputTranscription(prev => prev + text);
+                    finalOutputTranscription.current += text;
+                }
 
-                    if (message.serverContent?.inputTranscription) {
-                        const text = message.serverContent.inputTranscription.text;
-                        setLiveInputTranscription(prev => prev + text);
-                        finalInputTranscription.current += text;
-                    }
-                    if (message.serverContent?.outputTranscription) {
-                        const text = message.serverContent.outputTranscription.text;
-                        setLiveOutputTranscription(prev => prev + text);
-                        finalOutputTranscription.current += text;
-                    }
+                const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
+                if (base64EncodedAudioString && outputAudioContext.current) {
+                    setVoiceState('speaking');
+                    nextStartTime.current = Math.max(nextStartTime.current, outputAudioContext.current.currentTime);
+                    const audioBuffer = await decodeAudioData(decode(base64EncodedAudioString), outputAudioContext.current, 24000, 1);
+                    const source = outputAudioContext.current.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(outputAudioContext.current.destination);
+                    source.addEventListener('ended', () => {
+                        audioSources.current.delete(source);
+                        if (audioSources.current.size === 0) {
+                            setVoiceState('listening');
+                        }
+                    });
+                    source.start(nextStartTime.current);
+                    nextStartTime.current += audioBuffer.duration;
+                    audioSources.current.add(source);
+                }
 
-                    const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
-                    if (base64EncodedAudioString && outputAudioContextRef.current) {
-                        setVoiceState('speaking');
-                        nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputAudioContextRef.current.currentTime);
-                        const audioBuffer = await decodeAudioData(decode(base64EncodedAudioString), outputAudioContextRef.current, 24000, 1);
-                        const source = outputAudioContextRef.current.createBufferSource();
-                        source.buffer = audioBuffer;
-                        source.connect(outputAudioContextRef.current.destination);
-                        source.addEventListener('ended', () => {
-                            audioSourcesRef.current.delete(source);
-                            if (audioSourcesRef.current.size === 0 && voiceStateRef.current === 'speaking') {
-                                setVoiceState('listening');
-                            }
+                if (message.serverContent?.interrupted) {
+                    audioSources.current.forEach(s => s.stop());
+                    audioSources.current.clear();
+                    nextStartTime.current = 0;
+                }
+                
+                if (message.toolCall) {
+                    setVoiceState('processing');
+                    for (const call of message.toolCall.functionCalls) {
+                        const sensitiveActions = ['initiatePayment', 'makeAccountPayment', 'applyForCreditCard', 'applyForLoan', 'requestPaymentExtension'];
+                        let isVerified = true;
+                        if (sensitiveActions.includes(call.name)) {
+                            isVerified = await verifyCurrentUserWithPasskey();
+                        }
+
+                        let resultForModel: object;
+                        if (!isVerified) {
+                             resultForModel = { success: false, message: 'User cancelled the action.' };
+                        } else {
+                            const { resultForModel: res } = await handleFunctionCall(call);
+                            resultForModel = res;
+                        }
+                        
+                        sessionPromise.current?.then(session => {
+                            session.sendToolResponse({
+                                functionResponses: { id: call.id, name: call.name, response: { result: resultForModel } }
+                            });
                         });
-                        source.start(nextStartTimeRef.current);
-                        nextStartTimeRef.current += audioBuffer.duration;
-                        audioSourcesRef.current.add(source);
                     }
+                }
 
-                    if (message.serverContent?.interrupted) {
-                        audioSourcesRef.current.forEach(s => s.stop());
-                        audioSourcesRef.current.clear();
-                        nextStartTimeRef.current = 0;
+                if (message.serverContent?.turnComplete) {
+                    const fullInput = finalInputTranscription.current;
+                    const fullOutput = finalOutputTranscription.current;
+                    if (fullInput.trim()) {
+                        setMessages(prev => [...prev, { id: messageId.current++, sender: 'user', text: fullInput.trim() }]);
                     }
-                    
-                    if (message.toolCall) {
-                        setVoiceState('processing');
-                        for (const call of message.toolCall.functionCalls) {
-                            const sensitiveActions = ['initiatePayment', 'makeAccountPayment', 'applyForCreditCard', 'applyForLoan', 'requestPaymentExtension'];
-                            let isVerified = true;
-                            if (sensitiveActions.includes(call.name)) {
-                                isVerified = await verifyCurrentUserWithPasskey();
-                            }
-
-                            let resultForModel: object;
-                            if (!isVerified) {
-                                 resultForModel = { success: false, message: 'User cancelled the action.' };
-                            } else {
-                                const { resultForModel: res } = await handleFunctionCall(call);
-                                resultForModel = res;
-                            }
-                            
-                            if (sessionRef.current && (voiceStateRef.current !== 'stopping' && voiceStateRef.current !== 'idle')) {
-                                sessionRef.current.sendToolResponse({
-                                    functionResponses: { id: call.id, name: call.name, response: { result: resultForModel } }
-                                });
-                            }
-                        }
+                    if (fullOutput.trim()) {
+                         setMessages(prev => [...prev, { id: messageId.current++, sender: 'ai', text: fullOutput.trim() }]);
                     }
-
-                    if (message.serverContent?.turnComplete) {
-                        const fullInput = finalInputTranscription.current;
-                        const fullOutput = finalOutputTranscription.current;
-                        if (fullInput.trim()) {
-                            setMessages(prev => [...prev, { id: messageId.current++, sender: 'user', text: fullInput.trim() }]);
-                        }
-                        if (fullOutput.trim()) {
-                             setMessages(prev => [...prev, { id: messageId.current++, sender: 'ai', text: fullOutput.trim() }]);
-                        }
-                        finalInputTranscription.current = '';
-                        finalOutputTranscription.current = '';
-                        setLiveInputTranscription('');
-                        setLiveOutputTranscription('');
-                    }
-                },
-                onerror: (e: ErrorEvent) => {
-                    console.error('Live session error:', e);
-                    if (voiceStateRef.current !== 'stopping' && voiceStateRef.current !== 'idle') {
-                        showToast(t('voiceError'), 'error');
-                        stopVoiceMode();
-                    }
-                },
-                onclose: (e: CloseEvent) => {
-                    if (voiceStateRef.current !== 'stopping' && voiceStateRef.current !== 'idle') {
-                        stopVoiceMode();
-                    }
-                },
+                    finalInputTranscription.current = '';
+                    finalOutputTranscription.current = '';
+                    setLiveInputTranscription('');
+                    setLiveOutputTranscription('');
+                }
             },
-            config: {
-                responseModalities: [Modality.AUDIO],
-                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-                systemInstruction: getVoiceSystemInstruction(),
-                tools: [{ functionDeclarations: allFunctionDeclarations }],
-                outputAudioTranscription: {},
-                inputAudioTranscription: {},
+            onerror: (e: ErrorEvent) => {
+                console.error('Live session error:', e);
+                showToast(t('voiceError'), 'error');
+                stopVoiceMode();
             },
-        });
-        
-        if (voiceStateRef.current !== 'connecting') {
-            session.close();
-            stopVoiceMode(); // Full cleanup
-            return;
-        }
-        sessionRef.current = session;
-
-    } catch (error) {
-         console.error("Failed to start voice session:", error);
-         showToast(t('voiceError'), 'error');
-         stopVoiceMode();
-    }
-  }, [stopVoiceMode, showToast, t, getVoiceSystemInstruction, handleFunctionCall, verifyCurrentUserWithPasskey]);
-
-  const toggleVoiceMode = () => {
-    if (voiceState === 'idle') {
-        startVoiceMode();
-    } else {
-        stopVoiceMode();
-    }
+            onclose: (e: CloseEvent) => {
+                stopVoiceMode();
+            },
+        },
+        config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+            systemInstruction: getVoiceSystemInstruction(),
+            tools: [{ functionDeclarations: allFunctionDeclarations }],
+            outputAudioTranscription: {},
+            inputAudioTranscription: {},
+        },
+    });
   };
 
-  const isVoiceActive = voiceState !== 'idle' && voiceState !== 'stopping';
+  const toggleVoiceMode = () => {
+    if (isVoiceMode) {
+        stopVoiceMode();
+    } else {
+        startVoiceMode();
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -707,7 +661,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
             onClick={(e) => e.stopPropagation()}
           >
             <AnimatePresence>
-                {isVoiceActive && (
+                {isVoiceMode && (
                      <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -730,7 +684,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                                     boxShadow: { duration: 0.5, ease: "easeOut" }
                                 }}
                             >
-                                {voiceState === 'processing' || voiceState === 'connecting' || voiceState === 'permission' ? (
+                                {voiceState === 'processing' ? (
                                     <div className="w-24 h-24 rounded-full border-4 border-slate-700 border-t-indigo-500 animate-spin flex items-center justify-center"></div>
                                 ) : (
                                     <StopCircleIcon className="w-24 h-24 text-indigo-500" />
@@ -738,7 +692,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                             </motion.button>
                             <span className="text-slate-400 text-sm">{t('tapToStop')}</span>
                         </div>
-                        <div className="text-center h-1/3 flex flex-col justify-start pt-4">
+                        <div className="text-center h-1/3 flex flex-col justify-start">
                              <p className="text-xl text-white font-semibold min-h-[3em]">{liveOutputTranscription}</p>
                         </div>
                      </motion.div>
@@ -791,7 +745,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                     </div>
                   </div>
                 ))}
-                {isLoading && voiceState === 'idle' && (
+                {isLoading && (
                     <div className="flex items-end gap-2">
                         <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>
                         <div className="bg-slate-800 text-slate-200 p-3 rounded-xl">
