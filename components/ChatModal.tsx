@@ -382,6 +382,13 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
           // @ts-ignore
           outputAudioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
 
+          if (inputAudioContextRef.current.state === 'suspended') {
+              await inputAudioContextRef.current.resume();
+          }
+          if (outputAudioContextRef.current.state === 'suspended') {
+              await outputAudioContextRef.current.resume();
+          }
+
           mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
 
           sessionPromiseRef.current = ai.live.connect({
@@ -568,8 +575,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                 <button onClick={onClose} className="text-slate-400 hover:text-white">&times;</button>
               </header>
               
-              <div className="flex-grow p-4 overflow-y-auto">
-                <div className="space-y-4">
+              <div className="flex-grow p-4 overflow-y-auto flex flex-col">
+                <div className="space-y-4 mt-auto">
                     {messages.length === 1 && !isLoading && !isVoiceModeActive && (
                         <motion.div
                             variants={promptContainerVariants}
