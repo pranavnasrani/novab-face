@@ -596,8 +596,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                 <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-full text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors text-2xl">&times;</button>
               </header>
               
-              <div className="flex-grow p-4 overflow-y-auto flex flex-col justify-end">
-                <div className="space-y-4">
+              <div className="flex-grow p-4 overflow-y-auto flex flex-col">
+                <div className="space-y-4 mt-auto">
                     {messages.length === 1 && !isLoading && !isVoiceModeActive && (
                         <motion.div
                             variants={promptContainerVariants}
