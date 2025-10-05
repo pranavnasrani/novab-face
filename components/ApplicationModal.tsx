@@ -26,7 +26,6 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ isOpen, onCl
 
   useEffect(() => {
     if (isOpen) {
-        // Reset form on open
         setFormData({
             fullName: currentUser?.name || '',
             address: '',
@@ -57,32 +56,32 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ isOpen, onCl
         return;
     }
 
-    // Simulate network delay
-    setTimeout(() => { 
-        const baseDetails = {
-            fullName: formData.fullName,
-            address: formData.address,
-            dateOfBirth: formData.dateOfBirth,
-            employmentStatus: formData.employmentStatus,
-            employer: formData.employer,
-            annualIncome: parseFloat(formData.annualIncome) || 0,
-        };
+    const baseDetails = {
+        fullName: formData.fullName,
+        address: formData.address,
+        dateOfBirth: formData.dateOfBirth,
+        employmentStatus: formData.employmentStatus,
+        employer: formData.employer,
+        annualIncome: parseFloat(formData.annualIncome) || 0,
+    };
 
-        let result;
-        if (applicationType === 'Card') {
-            result = addCardToUser(baseDetails);
-        } else {
-            const loanDetails = {
-                ...baseDetails,
-                loanAmount: parseFloat(formData.loanAmount) || 0,
-                loanTerm: parseInt(formData.loanTerm, 10) || 0,
-            };
-            result = addLoanToUser(loanDetails);
-        }
-        
-        showToast(result.message, result.success ? 'success' : 'error');
+    let result;
+    if (applicationType === 'Card') {
+        result = await addCardToUser(baseDetails);
+    } else {
+        const loanDetails = {
+            ...baseDetails,
+            loanAmount: parseFloat(formData.loanAmount) || 0,
+            loanTerm: parseInt(formData.loanTerm, 10) || 0,
+        };
+        result = await addLoanToUser(loanDetails);
+    }
+    
+    showToast(result.message, result.success ? 'success' : 'error');
+    setIsSubmitting(false);
+    if (result.success) {
         onClose();
-    }, 1500);
+    }
   };
 
   const renderForm = () => (

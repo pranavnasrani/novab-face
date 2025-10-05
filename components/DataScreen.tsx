@@ -5,7 +5,7 @@ import { useTranslation } from '../hooks/useTranslation';
 import { UserIcon, LockIcon, ChevronLeftIcon, MailIcon, PhoneIcon } from './icons';
 
 interface RegisterScreenProps {
-  onRegister: (name: string, username: string, pin: string, email: string, phone: string) => boolean;
+  onRegister: (name: string, username: string, pin: string, email: string, phone: string) => Promise<boolean>;
   onBack: () => void;
 }
 
@@ -34,16 +34,21 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !username || pin.length !== 4 || !email || !phone) {
         setError(t('registerError'));
         return;
     }
-    if (!onRegister(name, username, pin, email, phone)) {
+    setIsSubmitting(true);
+    setError('');
+    const success = await onRegister(name, username, pin, email, phone);
+    if (!success) {
       setError(t('registerErrorUsernameTaken'));
     }
+    setIsSubmitting(false);
   };
 
   const formVariants = {
@@ -90,13 +95,15 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
           >
             <form onSubmit={handleRegister} className="space-y-5">
               <h2 className="text-2xl font-bold text-center mb-2 text-white">{t('createAccount')}</h2>
-              <InputField icon={<UserIcon />} type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('fullNamePlaceholder')} />
-              <InputField icon={<UserIcon />} type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('usernamePlaceholder')} />
-              <InputField icon={<MailIcon />} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('emailPlaceholder')} />
-              <InputField icon={<PhoneIcon />} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('phonePlaceholder')} />
-              <InputField icon={<LockIcon />} type="password" value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder="****" />
+              <InputField icon={<UserIcon />} type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('fullNamePlaceholder')} disabled={isSubmitting} />
+              <InputField icon={<UserIcon />} type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('usernamePlaceholder')} disabled={isSubmitting} />
+              <InputField icon={<MailIcon />} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('emailPlaceholder')} disabled={isSubmitting} />
+              <InputField icon={<PhoneIcon />} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('phonePlaceholder')} disabled={isSubmitting} />
+              <InputField icon={<LockIcon />} type="password" value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder="****" disabled={isSubmitting} />
               {error && <p className="text-red-400 text-sm text-center !mt-4">{error}</p>}
-              <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-all text-lg">{t('getStarted')}</motion.button>
+              <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-all text-lg" disabled={isSubmitting}>
+                {isSubmitting ? t('submitting') : t('getStarted')}
+              </motion.button>
             </form>
           </motion.div>
         </motion.div>

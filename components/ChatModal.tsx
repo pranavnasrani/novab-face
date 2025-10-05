@@ -4,8 +4,10 @@ import { createChatSession, extractPaymentDetailsFromImage, analyzeSpendingWithA
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
 import { SparklesIcon, MicrophoneIcon, SendIcon, CameraIcon } from './icons';
 import { Chat } from '@google/genai';
-import { Transaction, Card, Loan } from '../types';
+import { Transaction, Card, Loan, User } from '../types';
 import { useTranslation } from '../hooks/useTranslation';
+import { db } from '../services/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 interface ChatModalProps {
   isOpen: boolean;
@@ -40,7 +42,7 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
-  const { currentUser, transferMoney, users, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey } = useContext(BankContext);
+  const { currentUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey } = useContext(BankContext);
   const { t, language } = useTranslation();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -48,6 +50,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const [isListening, setIsListening] = useState(false);
   const [showImageOptions, setShowImageOptions] = useState(false);
   const [chat, setChat] = useState<Chat | null>(null);
+  const [contacts, setContacts] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -56,14 +59,25 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const finalTranscriptRef = useRef('');
   const manualStopRef = useRef(false);
 
-  const contacts = users.filter(u => u.id !== currentUser?.id).map(u => u.name);
-
   useEffect(() => {
-    if (isOpen && currentUser) {
+    const fetchUsers = async () => {
+        if (isOpen && currentUser) {
+            const usersRef = collection(db, "users");
+            const q = query(usersRef, where("uid", "!=", currentUser.uid));
+            const querySnapshot = await getDocs(q);
+            const userNames = querySnapshot.docs.map(doc => doc.data().name);
+            setContacts(userNames);
+        }
+    };
+    fetchUsers();
+  }, [isOpen, currentUser]);
+  
+  useEffect(() => {
+    if (isOpen && currentUser && contacts.length > 0) {
         setMessages([{ id: messageId.current++, sender: 'ai', text: t('chatGreeting', { name: currentUser?.name.split(' ')[0] })}]);
         setInputValue('');
         setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
-    } else {
+    } else if (!isOpen) {
         setChat(null);
         if (isListening) {
             recognition?.stop();
@@ -71,16 +85,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     }
     
     if (recognition) {
-        // Update speech recognition language to match app language
-        const langMap = {
-            en: 'en-US',
-            es: 'es-ES',
-            th: 'th-TH',
-            tl: 'tl-PH'
-        };
+        const langMap = { en: 'en-US', es: 'es-ES', th: 'th-TH', tl: 'tl-PH' };
         recognition.lang = langMap[language];
     }
-  }, [isOpen, currentUser, language]);
+  }, [isOpen, currentUser, language, contacts]);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -124,7 +132,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                             response: { success: false, message: 'User cancelled the action with their passkey.' },
                         }
                     });
-                    continue; // Skip to the next function call
+                    continue; 
                 }
             }
 
@@ -139,14 +147,14 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
             if (call.name === 'initiatePayment') {
                 const { recipientName, recipientAccountNumber, recipientEmail, recipientPhone, amount } = call.args;
                 const recipientIdentifier = (recipientAccountNumber || recipientEmail || recipientPhone || recipientName) as string;
-                const result = transferMoney(recipientIdentifier, amount as number);
+                const result = await transferMoney(recipientIdentifier, amount as number);
                 resultMessage = result.message;
                 resultForModel = result;
             } else if (call.name === 'getCardStatementDetails') {
                 const card = findCard(call.args.cardLast4 as string);
                 if (card) {
                     resultMessage = `Your ${card.cardType} ending in ${card.cardNumber.slice(-4)} has a statement balance of ${formatCurrency(card.statementBalance)}. The minimum payment is ${formatCurrency(card.minimumPayment)}, due on ${formatDate(card.paymentDueDate)}.`;
-                    resultForModel = { ...card, transactions: undefined }; // Don't send all transactions back
+                    resultForModel = { ...card, transactions: undefined };
                 } else {
                     resultMessage = "Card not found.";
                     resultForModel = { success: false, message: resultMessage };
@@ -169,18 +177,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                 const totalLoanBalance = currentUser.loans.reduce((sum, loan) => sum + loan.remainingBalance, 0);
 
                 resultMessage = `Here's your balance summary:\n- Savings: ${formatCurrency(savingsBalance)}\n- Total Card Debt: ${formatCurrency(totalCardBalance)}\n- Total Loan Debt: ${formatCurrency(totalLoanBalance)}`;
-                resultForModel = { 
-                    success: true, 
-                    savingsBalance,
-                    totalCardBalance,
-                    totalLoanBalance,
-                };
+                resultForModel = { success: true, savingsBalance, totalCardBalance, totalLoanBalance };
             } else if (call.name === 'getAccountTransactions') {
                 const limit = (call.args.limit as number) || 5;
-                const userTransactions = transactions
-                    .filter(tx => tx.userId === currentUser.id)
-                    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                    .slice(0, limit);
+                const userTransactions = transactions.slice(0, limit);
 
                 if (userTransactions.length > 0) {
                     const txSummary = userTransactions.map(tx => `- ${tx.type === 'credit' ? '+' : '-'}${formatCurrency(tx.amount)} for "${tx.description}" on ${formatDate(tx.timestamp)}`).join('\n');
@@ -192,36 +192,27 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                 }
             } else if (call.name === 'makeAccountPayment') {
                 const { accountId, accountType, paymentType, amount } = call.args;
-                const result = makeAccountPayment(accountId as string, accountType as 'card' | 'loan', paymentType as 'minimum' | 'statement' | 'full' | 'custom', amount as number | undefined);
+                const result = await makeAccountPayment(accountId as string, accountType as 'card' | 'loan', paymentType as 'minimum' | 'statement' | 'full' | 'custom', amount as number | undefined);
                 resultMessage = result.message;
                 resultForModel = result;
             } else if (call.name === 'requestPaymentExtension') {
                 const { accountId, accountType } = call.args;
-                const result = requestPaymentExtension(accountId as string, accountType as 'card' | 'loan');
+                const result = await requestPaymentExtension(accountId as string, accountType as 'card' | 'loan');
                 resultMessage = result.message;
                 resultForModel = result;
             } else if (call.name === 'applyForCreditCard') {
                 const applicationDetailsFromAI = call.args.applicationDetails as Omit<CardApplicationDetails, 'fullName'>;
-                const result = addCardToUser({ ...applicationDetailsFromAI, fullName: currentUser.name });
+                const result = await addCardToUser({ ...applicationDetailsFromAI, fullName: currentUser.name });
                 resultMessage = result.message;
                 resultForModel = result;
             } else if (call.name === 'applyForLoan') {
                 const applicationDetailsFromAI = call.args.applicationDetails as Omit<LoanApplicationDetails, 'fullName' | 'loanTerm'>;
-                const loanDetails = {
-                    ...applicationDetailsFromAI,
-                    fullName: currentUser.name,
-                    loanTerm: 36, // Retaining original hardcoded behavior
-                };
-                const result = addLoanToUser(loanDetails);
+                const loanDetails = { ...applicationDetailsFromAI, fullName: currentUser.name, loanTerm: 36 };
+                const result = await addLoanToUser(loanDetails);
                 resultMessage = result.message;
                 resultForModel = result;
             } else if (call.name === 'getSpendingAnalysis') {
-                // period is not used, but could be implemented to filter transactions by date
-                const allUserTransactions = [
-                    ...transactions.filter(tx => tx.userId === currentUser.id),
-                    ...currentUser.cards.flatMap(c => c.transactions)
-                ];
-                
+                const allUserTransactions = [ ...transactions, ...currentUser.cards.flatMap(c => c.transactions) ];
                 const analysisResult = await analyzeSpendingWithAI(allUserTransactions, language);
 
                 if (analysisResult.length === 0) {
@@ -231,7 +222,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                     const total = analysisResult.reduce((sum, item) => sum + item.value, 0);
                     resultMessage = `Based on my analysis, you've spent a total of ${formatCurrency(total)} recently. Here's the breakdown:\n` +
                         analysisResult.map(item => `- ${item.name}: ${formatCurrency(item.value)}`).join('\n');
-                    resultForModel = { total, breakdown: analysisResult.map(item => ({ category: item.name, amount: item.value })) };
+                    resultForModel = { total, breakdown: analysisResult };
                 }
             }
 
@@ -239,10 +230,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
             setMessages(prev => [...prev, systemMessage]);
 
             functionResponseParts.push({
-                functionResponse: {
-                    name: call.name,
-                    response: resultForModel,
-                }
+                functionResponse: { name: call.name, response: resultForModel }
             });
         }
         
@@ -276,24 +264,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
 
       recognition.onresult = (event: any) => {
         if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
-
-        let interimTranscript = '';
-        let finalTranscript = '';
+        let interimTranscript = '', finalTranscript = '';
         for (let i = 0; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript + ' ';
-            } else {
-                interimTranscript += event.results[i][0].transcript;
-            }
+            if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript + ' ';
+            else interimTranscript += event.results[i][0].transcript;
         }
-        
         finalTranscriptRef.current = finalTranscript;
         setInputValue(finalTranscript + interimTranscript);
-        
         speechTimeoutRef.current = window.setTimeout(() => {
             manualStopRef.current = false;
             recognition.stop();
-        }, 1500); // 1.5s pause to send
+        }, 1500);
       };
 
       recognition.onerror = (event: any) => {
@@ -302,31 +283,23 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       };
 
       recognition.onend = () => {
-          if (speechTimeoutRef.current) {
-            clearTimeout(speechTimeoutRef.current);
-          }
+          if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
           setIsListening(false);
           const transcript = finalTranscriptRef.current.trim();
-
-          if (!manualStopRef.current && transcript) {
-              handleSendRef.current(transcript);
-          }
+          if (!manualStopRef.current && transcript) handleSendRef.current(transcript);
           finalTranscriptRef.current = '';
       };
 
       return () => {
         if (recognition) {
-            recognition.onresult = null;
-            recognition.onerror = null;
-            recognition.onend = null;
-            recognition.stop();
+            recognition.onresult = null; recognition.onerror = null;
+            recognition.onend = null; recognition.stop();
         }
       }
   }, []);
 
   const toggleListening = () => {
     if (!recognition) return alert("Sorry, your browser doesn't support speech recognition.");
-    
     if (isListening) {
         manualStopRef.current = false;
         recognition.stop();

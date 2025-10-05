@@ -15,7 +15,7 @@ export interface Card {
 
 export interface Loan {
   id: string;
-  userId: number;
+  uid: string;
   loanAmount: number;
   interestRate: number; // Annual percentage
   termMonths: number;
@@ -27,12 +27,11 @@ export interface Loan {
 }
 
 export interface User {
-  id: number;
+  uid: string;
   name: string;
   username: string;
-  pin: string; // 4-digit PIN for simplicity
   balance: number;
-  savingsAccountNumber: string; // 16-digit account number
+  savingsAccountNumber: string; 
   investmentAccountNumber?: string;
   avatarUrl: string;
   cards: Card[];
@@ -43,7 +42,7 @@ export interface User {
 
 export interface Transaction {
   id: string;
-  userId: number;
+  uid: string;
   type: 'credit' | 'debit';
   amount: number;
   description: string;

@@ -30,7 +30,7 @@ const InputField = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
 );
 
 interface LoginScreenProps {
-  onLogin: (username: string, pin: string) => boolean;
+  onLogin: (username: string, pin: string) => Promise<boolean>;
   onBack: () => void;
 }
 
@@ -42,12 +42,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onBack }) => 
   const [error, setError] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!onLogin(username, pin)) {
+    setIsAuthenticating(true);
+    setError('');
+    const success = await onLogin(username, pin);
+    if (!success) {
       setError(t('loginError'));
       setPin('');
     }
+    // On success, the main App component will handle navigation
+    setIsAuthenticating(false);
   };
   
   const handlePasskeyLogin = async () => {
@@ -55,7 +60,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onBack }) => 
       setError('');
       const success = await loginWithPasskey();
       if (!success) {
-          // Error toasts are shown from the context, so we just reset state here
+          // Error toasts might be shown from the context, or we can set a local error
+          // For now, we assume context handles it or failure is silent until another attempt
       }
       setIsAuthenticating(false);
   };
@@ -125,7 +131,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onBack }) => 
               </motion.div>
               {error && <p className="text-red-400 text-sm text-center !mt-4">{error}</p>}
               <motion.div variants={itemVariants}>
-                <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-all text-lg disabled:opacity-50" disabled={isAuthenticating}>{t('signIn')}</motion.button>
+                <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-all text-lg disabled:opacity-50" disabled={isAuthenticating}>
+                {isAuthenticating ? t('authenticating') : t('signIn')}
+                </motion.button>
               </motion.div>
             </form>
           </motion.div>
