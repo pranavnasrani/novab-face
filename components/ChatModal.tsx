@@ -580,97 +580,109 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="fixed inset-0 bg-slate-950 z-40 flex flex-col"
-          onClick={(e) => e.stopPropagation()}
+          transition={{ duration: 0.3 }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 flex items-end justify-center"
+          onClick={onClose}
         >
-          <header className="flex-shrink-0 p-4 border-b border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <SparklesIcon className="w-6 h-6 text-indigo-400" />
-              <h2 className="text-lg font-bold text-white">{t('aiAssistant')}</h2>
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: "0%" }}
+            exit={{ y: "100%" }}
+            transition={{ type: 'spring', damping: 30, stiffness: 250 }}
+            className="w-full max-w-md bg-slate-950 rounded-t-3xl flex flex-col max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full flex-shrink-0 flex justify-center pt-3 pb-2 cursor-grab">
+                <div className="w-10 h-1.5 bg-slate-700 rounded-full" />
             </div>
-            <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors text-2xl">&times;</button>
-          </header>
-          
-          <div className="flex-grow p-4 overflow-y-auto flex flex-col">
-            <div className="space-y-4">
-                {messages.length === 1 && !isLoading && !isVoiceModeActive && (
-                    <div className="pb-4">
-                        <div className="flex items-center gap-2 justify-center mb-3">
-                            <SparklesIcon className="w-4 h-4 text-indigo-400" />
-                            <h3 className="text-sm font-semibold text-slate-400">{t('suggestivePromptsTitle')}</h3>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {suggestionPrompts.map((promptKey) => (
-                                <button
-                                    key={promptKey}
-                                    onClick={() => handleSend(t(promptKey as any))}
-                                    className="p-3 text-left bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-300 hover:bg-slate-800 transition-colors duration-200"
-                                >
-                                    {t(promptKey as any)}
-                                </button>
-                            ))}
+            <header className="flex-shrink-0 px-4 pb-3 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <SparklesIcon className="w-6 h-6 text-indigo-400" />
+                <h2 className="text-lg font-bold text-white">{t('aiAssistant')}</h2>
+              </div>
+              <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors text-2xl">&times;</button>
+            </header>
+            
+            <div className="flex-grow p-4 overflow-y-auto flex flex-col">
+              <div className="space-y-4">
+                  {messages.length === 1 && !isLoading && !isVoiceModeActive && (
+                      <div className="pb-4">
+                          <div className="flex items-center gap-2 justify-center mb-3">
+                              <SparklesIcon className="w-4 h-4 text-indigo-400" />
+                              <h3 className="text-sm font-semibold text-slate-400">{t('suggestivePromptsTitle')}</h3>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {suggestionPrompts.map((promptKey) => (
+                                  <button
+                                      key={promptKey}
+                                      onClick={() => handleSend(t(promptKey as any))}
+                                      className="p-3 text-left bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-300 hover:bg-slate-800 transition-colors duration-200"
+                                  >
+                                      {t(promptKey as any)}
+                                  </button>
+                              ))}
+                          </div>
+                      </div>
+                  )}
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex items-end gap-2 ${msg.sender === 'user' ? 'justify-end' : ''}`}
+                  >
+                    {msg.sender === 'ai' && <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>}
+                    <div className={`max-w-xs md:max-w-md p-3 rounded-xl ${
+                      msg.sender === 'user' ? 'bg-indigo-600 text-white' :
+                      msg.sender === 'ai' ? 'bg-slate-800 text-slate-200' :
+                      'bg-transparent text-slate-500 text-xs italic w-full text-center'
+                    }`}>
+                      <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                    </div>
+                  </div>
+                ))}
+                {isLoading && !isVoiceModeActive && (
+                    <div className="flex items-end gap-2">
+                        <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>
+                        <div className="bg-slate-800 text-slate-200 p-3 rounded-xl">
+                            <div className="flex gap-1.5 items-center">
+                                <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse delay-0"></span>
+                                <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></span>
+                                <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></span>
+                            </div>
                         </div>
                     </div>
                 )}
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex items-end gap-2 ${msg.sender === 'user' ? 'justify-end' : ''}`}
-                >
-                  {msg.sender === 'ai' && <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>}
-                  <div className={`max-w-xs md:max-w-md p-3 rounded-xl ${
-                    msg.sender === 'user' ? 'bg-indigo-600 text-white' :
-                    msg.sender === 'ai' ? 'bg-slate-800 text-slate-200' :
-                    'bg-transparent text-slate-500 text-xs italic w-full text-center'
-                  }`}>
-                    <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
-                  </div>
-                </div>
-              ))}
-              {isLoading && !isVoiceModeActive && (
-                  <div className="flex items-end gap-2">
-                      <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>
-                      <div className="bg-slate-800 text-slate-200 p-3 rounded-xl">
-                          <div className="flex gap-1.5 items-center">
-                              <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse delay-0"></span>
-                              <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></span>
-                              <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></span>
-                          </div>
-                      </div>
-                  </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          </div>
-          
-          <div className="flex-shrink-0 p-4 border-t border-slate-800 bg-slate-950 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-            {isVoiceModeActive ? (
-              <div className="flex items-center justify-between h-[52px] px-2">
-                <div className="flex flex-col">
-                    <p className="text-slate-200 font-medium text-sm">{getVoiceModePlaceholder()}</p>
-                    <p className="text-indigo-300 text-xs h-4 truncate">{liveTranscript.user || ' '}</p>
-                </div>
-                <button onClick={stopVoiceSession} className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors">
-                    <XCircleIcon className="w-6 h-6" />
-                </button>
+                <div ref={messagesEndRef} />
               </div>
-            ) : (
-                <form onSubmit={handleFormSubmit} className="flex items-center gap-2">
-                    <input type="file" accept="image/*" ref={photoInputRef} onChange={handleImageFileChange} className="hidden" />
-                    <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isLoading} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50">
-                        <CameraIcon className="w-6 h-6" />
-                    </button>
-                    <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={t('askNova')} className="w-full bg-slate-800 border-transparent rounded-lg px-4 py-3 h-12 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading} />
-                     <button type="button" onClick={toggleVoiceMode} disabled={isLoading} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50">
-                        <MicrophoneIcon className="w-6 h-6" />
-                    </button>
-                    <button type="submit" disabled={isLoading || !inputValue.trim()} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-800 disabled:text-slate-500 transition-colors">
-                        <SendIcon className="w-6 h-6" />
-                    </button>
-                </form>
-             )}
-          </div>
+            </div>
+            
+            <div className="flex-shrink-0 p-4 border-t border-slate-800 bg-slate-950 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+              {isVoiceModeActive ? (
+                <div className="flex items-center justify-between h-[52px] px-2">
+                  <div className="flex flex-col">
+                      <p className="text-slate-200 font-medium text-sm">{getVoiceModePlaceholder()}</p>
+                      <p className="text-indigo-300 text-xs h-4 truncate">{liveTranscript.user || ' '}</p>
+                  </div>
+                  <button onClick={stopVoiceSession} className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors">
+                      <XCircleIcon className="w-6 h-6" />
+                  </button>
+                </div>
+              ) : (
+                  <form onSubmit={handleFormSubmit} className="flex items-center gap-2">
+                      <input type="file" accept="image/*" ref={photoInputRef} onChange={handleImageFileChange} className="hidden" />
+                      <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isLoading} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50">
+                          <CameraIcon className="w-6 h-6" />
+                      </button>
+                      <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={t('askNova')} className="w-full bg-slate-800 border-transparent rounded-lg px-4 py-3 h-12 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading} />
+                       <button type="button" onClick={toggleVoiceMode} disabled={isLoading} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50">
+                          <MicrophoneIcon className="w-6 h-6" />
+                      </button>
+                      <button type="submit" disabled={isLoading || !inputValue.trim()} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-800 disabled:text-slate-500 transition-colors">
+                          <SendIcon className="w-6 h-6" />
+                      </button>
+                  </form>
+               )}
+            </div>
+          </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
