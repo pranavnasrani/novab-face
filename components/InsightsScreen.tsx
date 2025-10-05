@@ -1,112 +1,105 @@
-import React, { useContext } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from '../hooks/useTranslation';
 import { BankContext } from '../App';
+import { analyzeSpendingWithAI, identifySubscriptions } from '../services/geminiService';
 import { DonutChart } from './DonutChart';
-import { LightbulbIcon, SparklesIcon, ArrowTrendingUpIcon, ArrowTrendingDownIcon, PiggyBankIcon, BankIcon, XCircleIcon } from './icons';
+import { LightbulbIcon, SparklesIcon } from './icons';
+import { Transaction } from '../types';
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
-const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-        opacity: 1,
-        transition: {
-            staggerChildren: 0.1
-        }
-    }
-};
-
-const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0 }
-};
-
 export const InsightsScreen = () => {
-    const { insightsData, isGeneratingInsights } = useContext(BankContext);
-    const { t } = useTranslation();
-
-    if (isGeneratingInsights) {
-        return (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4 p-4">
-                <SparklesIcon className="w-12 h-12 text-indigo-400 animate-pulse" />
-                <h2 className="text-lg font-semibold text-white">{t('aiAnalyzing')}</h2>
-                <p className="text-sm text-center">This may take a moment...</p>
-            </div>
-        );
-    }
+    const { currentUser, transactions } = useContext(BankContext);
+    const { t, language } = useTranslation();
     
-    if (!insightsData) {
-        return (
-            <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-4 p-4">
-                <XCircleIcon className="w-12 h-12" />
-                <h2 className="text-lg font-semibold text-white">{t('insightsError')}</h2>
-                 <p className="text-sm text-center">We couldn't generate insights based on your recent activity.</p>
-            </div>
-        );
-    }
+    const [spendingData, setSpendingData] = useState<{ name: string; value: number }[]>([]);
+    const [isLoadingSpending, setIsLoadingSpending] = useState(true);
+    
+    const [subscriptions, setSubscriptions] = useState<{ name: string; amount: number }[]>([]);
+    const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState(true);
 
-    const { spendingAnalysis, spendingTrend, cashFlowForecast, savingOpportunities } = insightsData;
+    useEffect(() => {
+        const fetchInsights = async () => {
+            if (!currentUser) return;
+
+            setIsLoadingSpending(true);
+            setIsLoadingSubscriptions(true);
+            
+            const allUserSpendingTransactions = [
+                ...transactions.filter(tx => tx.uid === currentUser.uid && tx.type === 'debit'),
+                ...currentUser.cards.flatMap(c => c.transactions)
+            ];
+
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+            const recentTransactions = allUserSpendingTransactions.filter(tx => new Date(tx.timestamp) >= thirtyDaysAgo);
+
+            // Fetch both analyses in parallel
+            const [spendingResult, subscriptionResult] = await Promise.all([
+                analyzeSpendingWithAI(recentTransactions, language),
+                identifySubscriptions(recentTransactions, language)
+            ]);
+            
+            setSpendingData(spendingResult.sort((a, b) => b.value - a.value));
+            setIsLoadingSpending(false);
+            
+            setSubscriptions(subscriptionResult.sort((a, b) => b.amount - a.amount));
+            setIsLoadingSubscriptions(false);
+        };
+
+        fetchInsights();
+    }, [currentUser, transactions, language]);
 
     return (
-        <motion.div 
-            className="p-4 flex flex-col gap-6 text-white"
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-        >
-            <motion.div variants={itemVariants} className="text-center">
+        <div className="p-4 flex flex-col gap-6 text-white">
+            <div className="text-center">
                 <h2 className="text-xl font-bold">{t('aiPoweredInsights')}</h2>
                 <p className="text-sm text-slate-400 mt-1">{t('aiInsightsDescription')}</p>
-            </motion.div>
+            </div>
             
-            <motion.div variants={itemVariants}>
-                <h3 className="text-lg font-semibold text-white mb-2">{t('spendingTrends')}</h3>
-                <div className="bg-slate-800 rounded-3xl p-4 flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-full grid place-items-center flex-shrink-0 ${spendingTrend.percentageChange >= 0 ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
-                        {spendingTrend.percentageChange >= 0 ? <ArrowTrendingUpIcon className="w-6 h-6" /> : <ArrowTrendingDownIcon className="w-6 h-6" />}
-                    </div>
-                    <div>
-                        <p className="font-bold text-white text-lg">{Math.abs(spendingTrend.percentageChange).toFixed(0)}%</p>
-                        <p className="text-sm text-slate-300">{spendingTrend.summary}</p>
-                    </div>
-                </div>
-            </motion.div>
-
-            <motion.div variants={itemVariants}>
-                 <h3 className="text-lg font-semibold text-white mb-2">{t('spendingAnalysis')}</h3>
+            {/* Spending Analysis Card */}
+            <div>
+                 <h3 className="text-lg font-semibold text-white mb-2">{t('spendingThisMonth')}</h3>
                  <div className="bg-slate-800 rounded-3xl">
-                    <DonutChart data={spendingAnalysis} />
-                </div>
-            </motion.div>
-
-            <motion.div variants={itemVariants}>
-                <h3 className="text-lg font-semibold text-white mb-2">{t('cashFlowForecast')}</h3>
-                <div className="bg-slate-800 rounded-3xl p-4 flex items-center gap-4">
-                     <div className="w-12 h-12 rounded-full grid place-items-center flex-shrink-0 bg-blue-500/10 text-blue-400">
-                        <BankIcon className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <p className="font-bold text-white text-lg">{formatCurrency(cashFlowForecast.projectedBalance)}</p>
-                        <p className="text-sm text-slate-300">{t('projectedBalance')}</p>
-                        <p className="text-xs text-slate-400 mt-1">{cashFlowForecast.summary}</p>
-                    </div>
-                </div>
-            </motion.div>
-
-            <motion.div variants={itemVariants}>
-                 <h3 className="text-lg font-semibold text-white mb-2">{t('savingOpportunities')}</h3>
-                 <div className="bg-slate-800 rounded-3xl p-4 space-y-3">
-                     {savingOpportunities.map((tip, index) => (
-                        <div key={index} className="flex items-start gap-3 p-3 bg-slate-700/50 rounded-xl">
-                            <div className="w-8 h-8 rounded-full grid place-items-center flex-shrink-0 bg-yellow-500/10 text-yellow-400 mt-0.5">
-                                <LightbulbIcon className="w-5 h-5" />
-                            </div>
-                            <p className="text-sm text-slate-300">{tip}</p>
+                     {isLoadingSpending ? (
+                        <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-3">
+                            <SparklesIcon className="w-8 h-8 text-indigo-400 animate-pulse" />
+                            <p>{t('aiAnalyzingSpending')}</p>
                         </div>
-                     ))}
+                    ) : (
+                        <DonutChart data={spendingData} />
+                    )}
                 </div>
-            </motion.div>
-        </motion.div>
+            </div>
+
+            {/* Subscription Tracker Card */}
+            <div>
+                 <h3 className="text-lg font-semibold text-white mb-2">{t('subscriptionTracker')}</h3>
+                 <div className="bg-slate-800 rounded-3xl p-4">
+                     {isLoadingSubscriptions ? (
+                        <div className="h-40 flex flex-col items-center justify-center text-slate-400 gap-3">
+                            <SparklesIcon className="w-8 h-8 text-indigo-400 animate-pulse" />
+                            <p>{t('aiAnalyzingSubscriptions')}</p>
+                        </div>
+                    ) : subscriptions.length > 0 ? (
+                        <ul className="space-y-2">
+                           {subscriptions.map((sub, i) => (
+                                <li key={i} className="flex justify-between items-center p-2 rounded-lg bg-slate-700/50">
+                                    <span className="font-medium text-slate-200">{sub.name}</span>
+                                    <span className="font-bold text-white">{formatCurrency(sub.amount)}<span className="text-xs text-slate-400">/{t('monthly')}</span></span>
+                                </li>
+                           ))}
+                        </ul>
+                    ) : (
+                        <div className="h-40 flex flex-col items-center justify-center text-slate-500 gap-2">
+                            <LightbulbIcon className="w-10 h-10" />
+                            <p className="text-sm">{t('noSubscriptionsFound')}</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
     );
 };

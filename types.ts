@@ -51,21 +51,3 @@ export interface Transaction {
   category: string; // e.g., 'Groceries', 'Transport', 'Entertainment'
   cardId?: string; // Optional field to link transaction to a card
 }
-
-export interface SpendingAnalysisCategory {
-  name: string;
-  value: number;
-}
-
-export interface FinancialInsights {
-  spendingAnalysis: SpendingAnalysisCategory[];
-  spendingTrend: {
-    summary: string;
-    percentageChange: number;
-  };
-  cashFlowForecast: {
-    summary: string;
-    projectedBalance: number;
-  };
-  savingOpportunities: string[];
-}
