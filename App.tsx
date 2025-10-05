@@ -10,8 +10,9 @@ import { CheckCircleIcon, XCircleIcon } from './components/icons';
 import { auth, db } from './services/firebase';
 import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, addDoc, runTransaction, updateDoc, deleteDoc, orderBy, limit as firestoreLimit } from 'firebase/firestore';
-import { getComprehensiveInsights } from './services/geminiService';
+import { getComprehensiveInsights, ai as geminiAi } from './services/geminiService';
 import { useTranslation } from './hooks/useTranslation';
+import { GoogleGenAI } from '@google/genai';
 
 
 const base64url = {
@@ -98,6 +99,7 @@ interface BankContextType {
     insightsData: InsightsData | null;
     fetchInsights: () => Promise<void>;
     isInsightsLoading: boolean;
+    ai: GoogleGenAI;
 }
 
 export const BankContext = createContext<BankContextType>(null!);
@@ -582,7 +584,7 @@ export default function App() {
         showToast("Passkey removed.", 'success');
     };
 
-    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, fetchInsights, isInsightsLoading };
+    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, fetchInsights, isInsightsLoading, ai: geminiAi };
 
     const screenKey = currentUser ? 'dashboard' : authScreen;
 

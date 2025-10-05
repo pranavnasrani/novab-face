@@ -1,6 +1,3 @@
-
-
-
 import { GoogleGenAI, FunctionDeclaration, Type, Chat, GenerateContentResponse } from '@google/genai';
 import { Transaction, Card, Loan, InsightsData } from '../types';
 
@@ -12,9 +9,9 @@ if (!API_KEY) {
 }
 
 // FIX: Updated to use the new API initialization with a named `apiKey` parameter.
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+export const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-const initiatePaymentFunctionDeclaration: FunctionDeclaration = {
+export const initiatePaymentFunctionDeclaration: FunctionDeclaration = {
     name: 'initiatePayment',
     description: 'Initiates a payment from the current user to a specified recipient.',
     parameters: {
@@ -45,7 +42,7 @@ const initiatePaymentFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const getCardStatementDetailsFunctionDeclaration: FunctionDeclaration = {
+export const getCardStatementDetailsFunctionDeclaration: FunctionDeclaration = {
     name: 'getCardStatementDetails',
     description: "Retrieves the current statement details for a user's credit card, including balance, minimum payment, and due date.",
     parameters: {
@@ -57,7 +54,7 @@ const getCardStatementDetailsFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const getCardTransactionsFunctionDeclaration: FunctionDeclaration = {
+export const getCardTransactionsFunctionDeclaration: FunctionDeclaration = {
     name: 'getCardTransactions',
     description: 'Fetches the recent transaction history for a specified credit card.',
     parameters: {
@@ -70,7 +67,7 @@ const getCardTransactionsFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const makeAccountPaymentFunctionDeclaration: FunctionDeclaration = {
+export const makeAccountPaymentFunctionDeclaration: FunctionDeclaration = {
     name: 'makeAccountPayment',
     description: "Makes a payment towards a user's credit card bill or loan from their main account.",
     parameters: {
@@ -97,7 +94,7 @@ const makeAccountPaymentFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const requestPaymentExtensionFunctionDeclaration: FunctionDeclaration = {
+export const requestPaymentExtensionFunctionDeclaration: FunctionDeclaration = {
     name: 'requestPaymentExtension',
     description: 'Requests a 14-day payment extension for a credit card or loan.',
     parameters: {
@@ -110,7 +107,7 @@ const requestPaymentExtensionFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const getAccountTransactionsFunctionDeclaration: FunctionDeclaration = {
+export const getAccountTransactionsFunctionDeclaration: FunctionDeclaration = {
     name: 'getAccountTransactions',
     description: "Fetches the recent transaction history for the user's main savings account.",
     parameters: {
@@ -122,7 +119,7 @@ const getAccountTransactionsFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const getAccountBalanceFunctionDeclaration: FunctionDeclaration = {
+export const getAccountBalanceFunctionDeclaration: FunctionDeclaration = {
     name: 'getAccountBalance',
     description: "Retrieves the user's current account balances, including savings, total credit card debt, and total loan debt.",
     parameters: {
@@ -132,7 +129,7 @@ const getAccountBalanceFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const applyForCreditCardFunctionDeclaration: FunctionDeclaration = {
+export const applyForCreditCardFunctionDeclaration: FunctionDeclaration = {
     name: 'applyForCreditCard',
     description: 'Processes a new credit card application for the user. All necessary personal and financial information must be collected before calling this function.',
     parameters: {
@@ -155,7 +152,7 @@ const applyForCreditCardFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const applyForLoanFunctionDeclaration: FunctionDeclaration = {
+export const applyForLoanFunctionDeclaration: FunctionDeclaration = {
     name: 'applyForLoan',
     description: 'Processes a new loan application for the user after collecting necessary personal and financial information.',
     parameters: {
@@ -178,7 +175,7 @@ const applyForLoanFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const getSpendingAnalysisFunctionDeclaration: FunctionDeclaration = {
+export const getSpendingAnalysisFunctionDeclaration: FunctionDeclaration = {
     name: 'getSpendingAnalysis',
     description: 'Analyzes the user\'s spending habits over a specified period using AI. Covers both bank and card transactions.',
     parameters: {
@@ -192,6 +189,19 @@ const getSpendingAnalysisFunctionDeclaration: FunctionDeclaration = {
         required: [],
     },
 };
+
+export const allFunctionDeclarations = [
+    initiatePaymentFunctionDeclaration,
+    getCardStatementDetailsFunctionDeclaration,
+    getCardTransactionsFunctionDeclaration,
+    makeAccountPaymentFunctionDeclaration,
+    requestPaymentExtensionFunctionDeclaration,
+    applyForCreditCardFunctionDeclaration,
+    applyForLoanFunctionDeclaration,
+    getSpendingAnalysisFunctionDeclaration,
+    getAccountTransactionsFunctionDeclaration,
+    getAccountBalanceFunctionDeclaration
+];
 
 
 export const createChatSession = (userFullName: string, contacts: string[], language: 'en' | 'es' | 'th' | 'tl', userCards: Card[], userLoans: Loan[]): Chat => {
@@ -263,25 +273,12 @@ Your capabilities include initiating payments, providing card information, analy
     - Always maintain a friendly and professional tone.
     - VERY IMPORTANT: You MUST respond exclusively in ${langName}. Do not switch languages.`;
 
-    const functionDeclarations = [
-        initiatePaymentFunctionDeclaration,
-        getCardStatementDetailsFunctionDeclaration,
-        getCardTransactionsFunctionDeclaration,
-        makeAccountPaymentFunctionDeclaration,
-        requestPaymentExtensionFunctionDeclaration,
-        applyForCreditCardFunctionDeclaration,
-        applyForLoanFunctionDeclaration,
-        getSpendingAnalysisFunctionDeclaration,
-        getAccountTransactionsFunctionDeclaration,
-        getAccountBalanceFunctionDeclaration
-    ];
-
     // FIX: Updated to use the new `ai.chats.create` API with the recommended `gemini-2.5-flash` model and the correct configuration structure.
     return ai.chats.create({
       model: 'gemini-2.5-flash',
       config: {
         systemInstruction: systemInstruction,
-        tools: [{ functionDeclarations }],
+        tools: [{ functionDeclarations: allFunctionDeclarations }],
       }
     });
 };
