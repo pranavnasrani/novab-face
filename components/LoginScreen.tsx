@@ -81,7 +81,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onBack }) => 
           transition={{ duration: 0.7, ease: 'easeOut' }}
           className="w-full max-w-sm"
         >
-          <button onClick={onBack} className="absolute top-16 left-6 text-slate-300 hover:text-white transition-colors">
+          <button onClick={onBack} aria-label={t('goBack')} className="absolute top-16 left-6 text-slate-300 hover:text-white transition-colors">
               <ChevronLeftIcon className="w-6 h-6" />
           </button>
           <div className="text-center mb-8">
@@ -124,10 +124,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onBack }) => 
               </motion.div>
 
               <motion.div variants={itemVariants}>
-                <InputField type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('usernamePlaceholderLogin')} disabled={isAuthenticating} />
+                <InputField type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('usernamePlaceholderLogin')} disabled={isAuthenticating} aria-label={t('username')} />
               </motion.div>
               <motion.div variants={itemVariants}>
-                <InputField type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('password')} disabled={isAuthenticating} />
+                <InputField type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('password')} disabled={isAuthenticating} aria-label={t('password')} />
               </motion.div>
               {error && <p className="text-red-400 text-sm text-center !mt-4">{error}</p>}
               <motion.div variants={itemVariants}>
