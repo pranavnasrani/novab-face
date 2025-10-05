@@ -112,6 +112,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const [showImageOptions, setShowImageOptions] = useState(false);
   const [chat, setChat] = useState<Chat | null>(null);
   const [contacts, setContacts] = useState<string[]>([]);
+  const [contactsLoaded, setContactsLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -136,18 +137,23 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   useEffect(() => {
     const fetchUsers = async () => {
         if (isOpen && currentUser) {
+            setContactsLoaded(false);
             const usersRef = collection(db, "users");
             const q = query(usersRef, where("uid", "!=", currentUser.uid));
             const querySnapshot = await getDocs(q);
             const userNames = querySnapshot.docs.map(doc => doc.data().name);
             setContacts(userNames);
+            setContactsLoaded(true);
+        } else if (!isOpen) {
+            setContacts([]);
+            setContactsLoaded(false);
         }
     };
     fetchUsers();
   }, [isOpen, currentUser]);
   
   useEffect(() => {
-    if (isOpen && currentUser && contacts.length > 0 && !chat) {
+    if (isOpen && currentUser && contactsLoaded && !chat) {
         setMessages([{ id: messageId.current++, sender: 'ai', text: t('chatGreeting', { name: currentUser?.name.split(' ')[0] })}]);
         setInputValue('');
         setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
@@ -157,7 +163,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
             stopVoiceSession();
         }
     }
-  }, [isOpen, currentUser, language, contacts]);
+  }, [isOpen, currentUser, language, contacts, contactsLoaded]);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

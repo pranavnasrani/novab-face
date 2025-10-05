@@ -122,7 +122,7 @@ export const Dashboard = () => {
                         dragConstraints={{ left: 0, right: 0 }}
                         dragElastic={0.2}
                         onDragEnd={handleDragEnd}
-                        className="flex-grow flex flex-col"
+                        className="flex-grow overflow-y-auto"
                     >
                         {renderContent()}
                     </motion.div>

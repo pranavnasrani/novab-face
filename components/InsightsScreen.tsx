@@ -50,7 +50,7 @@ export const InsightsScreen = () => {
     }
 
     return (
-        <div className="p-4 flex flex-col gap-6 text-white overflow-y-auto h-full">
+        <div className="p-4 flex flex-col gap-6 text-white">
             <div className="text-center">
                 <h2 className="text-xl font-bold">{t('aiPoweredInsights')}</h2>
                 <p className="text-sm text-slate-400 mt-1">{t('aiInsightsDescription')}</p>
