@@ -1,5 +1,4 @@
 
-
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights } from '../services/geminiService';
@@ -398,29 +397,27 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
           };
           const langName = langNameMap[language];
           const contactsInstruction = contacts.length > 0
-              ? `Available contacts by name are: ${contacts.join(', ')}. If a name doesn't match, inform the user.`
-              : "There are no other users registered. If the user asks to send money to someone by name, you must inform them that no contacts were found and they should try an account number, email, or phone instead.";
+              ? `Available contacts by name are: ${contacts.join(', ')}.`
+              : "No other users registered.";
           const activeLoans = currentUser.loans.filter(l => l.status === 'Active');
-          let loanInstructions = '';
-          if (activeLoans.length === 0) {
-              loanInstructions = "The user has no active loans.";
-          } else if (activeLoans.length === 1) {
-              loanInstructions = `The user has one active loan with ID: '${activeLoans[0].id}'. Use this ID for any loan-related actions.`;
-          } else {
+          let loanInstructions = 'User has no active loans.';
+          if (activeLoans.length === 1) {
+              loanInstructions = `User has one active loan with ID: '${activeLoans[0].id}'.`;
+          } else if (activeLoans.length > 1) {
               const loanDescriptions = activeLoans.map((l) => `a loan for ${formatCurrency(l.loanAmount)} (ID: '${l.id}')`).join('; ');
-              loanInstructions = `The user has multiple active loans: ${loanDescriptions}. You MUST ask for clarification before taking action on a loan.`;
+              loanInstructions = `User has multiple active loans: ${loanDescriptions}. You must ask for clarification.`;
           }
-          const cardDescriptions = currentUser.cards.length > 0 ? `The user has: ${currentUser.cards.map(c => `${c.cardType} ending in ${c.cardNumber.slice(-4)}`).join(', ')}.` : "The user has no credit cards.";
+          const cardDescriptions = currentUser.cards.length > 0 ? `User has: ${currentUser.cards.map(c => `${c.cardType} ending in ${c.cardNumber.slice(-4)}`).join(', ')}.` : "User has no credit cards.";
 
-          const systemInstruction = `You are a world-class banking assistant named Nova for a user named ${currentUser.name}. You will be communicating via voice. Be concise and conversational.
-
-1.  **Payments**: Use 'initiatePayment' for transfers. You need a recipient (name, account number, email, or phone) and an amount. ${contactsInstruction}
-2.  **Spending Analysis**: Use 'getSpendingAnalysis' for spending breakdowns.
-3.  **Account Info**: Use 'getAccountBalance' for overall balances, 'getCardStatementDetails' for card bills, and 'getCardTransactions' or 'getAccountTransactions' for recent transactions. ${cardDescriptions}
-4.  **Bill & Loan Payments**: Use 'makeAccountPayment'. Clarify the payment amount. ${loanInstructions}
-5.  **Payment Extensions**: Use 'requestPaymentExtension'. ${loanInstructions}
-6.  **Applications**: The user cannot apply for new cards or loans via voice. Ask them to use the text interface.
-7.  **General**: Be polite, brief, and helpful. You MUST respond exclusively in ${langName}.`;
+          const systemInstruction = `You are Nova, a friendly and concise voice-based banking assistant for a user named ${currentUser.name}.
+- Your main goal is to help with banking tasks using the available tools.
+- Keep your responses short and conversational, suitable for voice interaction.
+- The user is speaking ${langName}. You MUST respond exclusively in ${langName}.
+- Do not ask the user to use the text interface for applications; simply state that you cannot process applications via voice at this time.
+- Here is some context about the user:
+  - Contacts: ${contactsInstruction}
+  - Cards: ${cardDescriptions}
+  - Loans: ${loanInstructions}`;
 
 
           sessionPromiseRef.current = ai.live.connect({
@@ -733,16 +730,16 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                         </motion.form>
                      )}
                     </AnimatePresence>
-                    <motion.button
-                        onClick={toggleVoiceMode}
-                        disabled={isLoading && !isVoiceModeActive}
-                        className={`w-16 h-16 rounded-full grid place-items-center flex-shrink-0 transition-all duration-300 text-white absolute right-4 shadow-lg ${isVoiceModeActive ? 'bg-red-500 hover:bg-red-600' : 'bg-slate-700 hover:bg-slate-600'} bottom-[calc(6rem+env(safe-area-inset-bottom))]`}
-                        animate={{ scale: isVoiceModeActive && voiceConnectionState === 'connected' ? 1.1 : 1 }}
-                        transition={{ type: 'spring', stiffness: 300, damping: 10, repeat: isVoiceModeActive ? Infinity : 0, repeatType: 'reverse' }}
-                    >
-                         {isVoiceModeActive ? <XCircleIcon className="w-8 h-8" /> : <MicrophoneIcon className="w-8 h-8" />}
-                    </motion.button>
                </div>
+                <motion.button
+                    onClick={toggleVoiceMode}
+                    disabled={isLoading && !isVoiceModeActive}
+                    className={`w-16 h-16 rounded-full grid place-items-center flex-shrink-0 transition-all duration-300 text-white absolute right-4 shadow-lg ${isVoiceModeActive ? 'bg-red-500 hover:bg-red-600' : 'bg-slate-700 hover:bg-slate-600'} bottom-[calc(8rem+env(safe-area-inset-bottom))]`}
+                    animate={{ scale: isVoiceModeActive && voiceConnectionState === 'connected' ? 1.1 : 1 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 10, repeat: isVoiceModeActive ? Infinity : 0, repeatType: 'reverse' }}
+                >
+                     {isVoiceModeActive ? <XCircleIcon className="w-8 h-8" /> : <MicrophoneIcon className="w-8 h-8" />}
+                </motion.button>
             </div>
           </motion.div>
         </motion.div>
