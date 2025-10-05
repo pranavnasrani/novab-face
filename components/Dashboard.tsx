@@ -129,7 +129,7 @@ export const Dashboard = () => {
                 </AnimatePresence>
             </main>
             
-            <div className="fixed bottom-24 right-4 md:right-6 flex flex-col items-center gap-3 z-30">
+            <div className="absolute bottom-24 right-4 flex flex-col items-center gap-3 z-30">
                  <AnimatePresence>
                     {(activeTab === 'cards' || activeTab === 'loans') && (
                          <motion.button
