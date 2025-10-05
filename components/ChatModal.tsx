@@ -5,7 +5,7 @@ import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromIm
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
 import { SparklesIcon, SendIcon, CameraIcon, MicrophoneIcon, StopCircleIcon } from './icons';
 // FIX: The `LiveSession` type is not exported by the `@google/genai` library and was removed from the import. Its type will be inferred later.
-import { Chat, LiveServerMessage, Modality, Blob } from '@google/genai';
+import { Chat, LiveServerMessage, Modality } from '@google/genai';
 import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -13,6 +13,12 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 interface ChatModalProps {
   isOpen: boolean;
   onClose: () => void;
+}
+
+// The Blob type expected by the Gemini API for media objects
+interface GeminiBlob {
+    data: string;
+    mimeType: string;
 }
 
 type Message = {
@@ -518,7 +524,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
 
                 audioWorkletNode.current.port.onmessage = (event) => {
                     const pcmBuffer = event.data as ArrayBuffer;
-                    const pcmBlob: Blob = {
+                    const pcmBlob: GeminiBlob = {
                         data: encode(new Uint8Array(pcmBuffer)),
                         mimeType: `audio/pcm;rate=${inputAudioContext.current?.sampleRate || 16000}`,
                     };
