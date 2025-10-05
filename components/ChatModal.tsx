@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights } from '../services/geminiService';
@@ -461,7 +462,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                                         functionResponses: {
                                             id: call.id,
                                             name: call.name,
-                                            response: { success: false, message: 'User authentication failed or was cancelled.' }
+                                            response: { result: { success: false, message: 'User authentication failed or was cancelled.' } }
                                         }
                                     });
                                 });
@@ -473,7 +474,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
 
                             sessionPromiseRef.current?.then(session => {
                                 session.sendToolResponse({
-                                    functionResponses: { id: call.id, name: call.name, response: resultForModel }
+                                    functionResponses: { id: call.id, name: call.name, response: { result: resultForModel } }
                                 });
                             });
                         }
@@ -571,13 +572,13 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       {isOpen && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="absolute inset-0 bg-black/50 backdrop-blur-sm z-40"
+          className="absolute inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-end"
           onClick={onClose}
         >
           <motion.div
             initial={{ y: "100%" }} animate={{ y: "0%" }} exit={{ y: "100%" }}
-            transition={{ type: 'spring', damping: 30, stiffness: 220, mass: 0.9 }}
-            className="bg-slate-900 w-full h-[calc(100vh-env(safe-area-inset-top)-2rem)] max-h-screen rounded-t-3xl flex flex-col overflow-hidden absolute bottom-0"
+            transition={{ type: 'spring', damping: 40, stiffness: 300 }}
+            className="bg-slate-900 w-full h-[calc(100%_-_env(safe-area-inset-top)_-_1rem)] rounded-t-3xl flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <motion.div
@@ -668,7 +669,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                       >
                           <motion.div
                               initial={{ y: "100%" }} animate={{ y: "0%" }} exit={{ y: "100%" }}
-                              transition={{ type: 'spring', damping: 30, stiffness: 250 }}
+                              transition={{ type: 'spring', damping: 40, stiffness: 300 }}
                               onClick={(e) => e.stopPropagation()}
                               className="bg-slate-800 rounded-t-2xl p-4 w-full max-w-md mx-auto pb-[calc(1rem+env(safe-area-inset-bottom))]"
                           >
