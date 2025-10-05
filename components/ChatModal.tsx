@@ -109,6 +109,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   // Audio Refs
   const inputAudioContextRef = useRef<AudioContext | null>(null);
   const outputAudioContextRef = useRef<AudioContext | null>(null);
+  const outputGainNodeRef = useRef<GainNode | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const audioSourcesRef = useRef(new Set<AudioBufferSourceNode>());
@@ -345,6 +346,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         
         mediaStreamRef.current?.getTracks().forEach(track => track.stop());
         mediaStreamRef.current = null;
+
+        outputGainNodeRef.current?.disconnect();
+        outputGainNodeRef.current = null;
     
         if (inputAudioContextRef.current && inputAudioContextRef.current.state !== 'closed') {
             inputAudioContextRef.current.close().catch(console.error);
@@ -372,16 +376,20 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         setVoiceConnectionState('connecting');
 
         try {
+            // FIX: Request microphone access first to ensure permissions are granted before creating AudioContexts.
+            mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+
             const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
             inputAudioContextRef.current = new AudioContext({ sampleRate: 16000 });
             outputAudioContextRef.current = new AudioContext({ sampleRate: 24000 });
+            
+            outputGainNodeRef.current = outputAudioContextRef.current.createGain();
+            outputGainNodeRef.current.connect(outputAudioContextRef.current.destination);
             
             await Promise.all([
                 inputAudioContextRef.current.state === 'suspended' ? inputAudioContextRef.current.resume() : Promise.resolve(),
                 outputAudioContextRef.current.state === 'suspended' ? outputAudioContextRef.current.resume() : Promise.resolve()
             ]);
-
-            mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
 
             const langNameMap = { en: 'English', es: 'Spanish', th: 'Thai', tl: 'Tagalog' };
             const langName = langNameMap[language];
@@ -418,17 +426,22 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                             const pcmBlob = createBlob(inputData);
                             sessionPromiseRef.current?.then((session) => session.sendRealtimeInput({ media: pcmBlob }));
                         };
+                        
+                        // FIX: Prevent audio feedback by routing microphone input through a muted GainNode.
+                        const muteNode = inputAudioContextRef.current.createGain();
+                        muteNode.gain.value = 0;
                         source.connect(scriptProcessorRef.current);
-                        scriptProcessorRef.current.connect(inputAudioContextRef.current.destination);
+                        scriptProcessorRef.current.connect(muteNode);
+                        muteNode.connect(inputAudioContextRef.current.destination);
                     },
                     onmessage: async (message: LiveServerMessage) => {
                         const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
-                        if (base64Audio && outputAudioContextRef.current) {
+                        if (base64Audio && outputAudioContextRef.current && outputGainNodeRef.current) {
                             nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputAudioContextRef.current.currentTime);
                             const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContextRef.current, 24000, 1);
                             const sourceNode = outputAudioContextRef.current.createBufferSource();
                             sourceNode.buffer = audioBuffer;
-                            sourceNode.connect(outputAudioContextRef.current.destination);
+                            sourceNode.connect(outputGainNodeRef.current);
                             sourceNode.addEventListener('ended', () => audioSourcesRef.current.delete(sourceNode));
                             sourceNode.start(nextStartTimeRef.current);
                             nextStartTimeRef.current += audioBuffer.duration;
