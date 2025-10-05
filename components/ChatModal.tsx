@@ -80,26 +80,6 @@ const fileToBase64 = (file: File): Promise<string> => {
     });
 };
 
-const promptContainerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.3, 
-    },
-  },
-};
-
-const promptItemVariants = {
-  hidden: { opacity: 0, y: 15 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { type: 'spring', stiffness: 100 },
-  },
-};
-
 const suggestionPrompts = [
   'prompt1', 'prompt2', 'prompt3', 'prompt4'
 ];
@@ -110,13 +90,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showImageOptions, setShowImageOptions] = useState(false);
   const [chat, setChat] = useState<Chat | null>(null);
   const [contacts, setContacts] = useState<string[]>([]);
   const [contactsLoaded, setContactsLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const uploadInputRef = useRef<HTMLInputElement>(null);
   const messageId = useRef(0);
   
   // Voice Mode State
@@ -550,7 +528,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setShowImageOptions(false);
     setIsLoading(true);
     setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: t('analyzingImage') }]);
 
@@ -600,148 +577,100 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/60 backdrop-blur-md z-40 flex items-end justify-center"
-          onClick={onClose}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 bg-slate-950 z-40 flex flex-col"
+          onClick={(e) => e.stopPropagation()}
         >
-          <motion.div
-            initial={{ y: "100%" }} animate={{ y: "0%" }} exit={{ y: "100%" }}
-            transition={{ type: 'spring', damping: 30, stiffness: 250 }}
-            className="bg-slate-900 w-full max-w-md h-[calc(100%_-_env(safe-area-inset-top)_-_1rem)] rounded-t-3xl flex flex-col overflow-hidden relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <motion.div
-                className="absolute -bottom-1/3 left-1/2 -translate-x-1/2 w-[200%] aspect-square rounded-full bg-gradient-radial from-indigo-500/25 via-indigo-500/5 to-transparent pointer-events-none"
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
-            />
-            <div className="relative z-10 flex flex-col w-full h-full">
-              <header className="p-4 border-b border-slate-700/50 flex items-center justify-between flex-shrink-0">
-                <div className="flex items-center gap-2">
-                  <SparklesIcon className="w-6 h-6 text-indigo-400" />
-                  <h2 className="text-lg font-bold text-white">{isVoiceModeActive ? t('voiceMode') : t('aiAssistant')}</h2>
-                </div>
-                <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-full text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors text-2xl">&times;</button>
-              </header>
-              
-              <div className="flex-grow p-4 overflow-y-auto flex flex-col">
-                <div className="space-y-4">
-                    {messages.length === 1 && !isLoading && !isVoiceModeActive && (
-                        <motion.div
-                            variants={promptContainerVariants}
-                            initial="hidden"
-                            animate="visible"
-                            className="pb-4"
-                        >
-                            <div className="flex items-center gap-2 justify-center mb-3">
-                                <SparklesIcon className="w-4 h-4 text-indigo-400" />
-                                <h3 className="text-sm font-semibold text-slate-400">{t('suggestivePromptsTitle')}</h3>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {suggestionPrompts.map((promptKey) => (
-                                    <motion.button
-                                        key={promptKey}
-                                        variants={promptItemVariants}
-                                        onClick={() => handleSend(t(promptKey as any))}
-                                        className="p-3 text-left bg-slate-800/70 rounded-xl text-sm text-slate-300 hover:bg-slate-700 transition-colors duration-200 backdrop-blur-sm"
-                                    >
-                                        {t(promptKey as any)}
-                                    </motion.button>
-                                ))}
-                            </div>
-                        </motion.div>
-                    )}
-                  {messages.map((msg) => (
-                    <motion.div
-                      key={msg.id}
-                      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                      className={`flex items-end gap-2 ${msg.sender === 'user' ? 'justify-end' : ''}`}
-                    >
-                      {msg.sender === 'ai' && <div className="w-8 h-8 rounded-full bg-indigo-500 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-white" /></div>}
-                      <div className={`max-w-xs md:max-w-md p-3 rounded-2xl ${
-                        msg.sender === 'user' ? 'bg-indigo-600 text-white rounded-br-none' :
-                        msg.sender === 'ai' ? 'bg-slate-700/80 text-slate-200 rounded-bl-none' :
-                        'bg-slate-800/70 text-slate-400 text-sm italic w-full text-center'
-                      }`}>
-                        <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
-                      </div>
-                    </motion.div>
-                  ))}
-                  {isLoading && !isVoiceModeActive && (
-                      <motion.div className="flex items-end gap-2">
-                          <div className="w-8 h-8 rounded-full bg-indigo-500 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-white" /></div>
-                          <div className="bg-slate-700/80 text-slate-200 p-3 rounded-2xl rounded-bl-none">
-                              <div className="flex gap-1.5 items-center">
-                                  <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse delay-0"></span>
-                                  <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></span>
-                                  <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></span>
-                              </div>
-                          </div>
-                      </motion.div>
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
-              </div>
-              
-              <AnimatePresence>
-                  {showImageOptions && (
-                      <motion.div
-                          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                          className="fixed inset-0 bg-black/30 z-50 flex items-end justify-center"
-                          onClick={() => setShowImageOptions(false)}
-                      >
-                          <motion.div
-                              initial={{ y: "100%" }} animate={{ y: "0%" }} exit={{ y: "100%" }}
-                              transition={{ type: 'spring', damping: 30, stiffness: 250 }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="bg-slate-800/80 backdrop-blur-lg border-t border-slate-700 rounded-t-2xl p-4 w-full max-w-md mx-auto pb-[calc(1rem+env(safe-area-inset-bottom))]"
-                          >
-                              <div className="w-10 h-1.5 bg-slate-600 rounded-full mx-auto mb-5"></div>
-                              <div className="space-y-2">
-                                  <button onClick={() => { photoInputRef.current?.click(); setShowImageOptions(false); }} className="w-full text-left p-3 rounded-xl hover:bg-slate-700/70 text-white text-base transition-colors">{t('takePhoto')}</button>
-                                  <button onClick={() => { uploadInputRef.current?.click(); setShowImageOptions(false); }} className="w-full text-left p-3 rounded-xl hover:bg-slate-700/70 text-white text-base transition-colors">{t('uploadImage')}</button>
-                              </div>
-                              <button onClick={() => setShowImageOptions(false)} className="w-full text-center p-3 mt-4 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-base font-semibold transition-colors">{t('close')}</button>
-                          </motion.div>
-                      </motion.div>
-                  )}
-              </AnimatePresence>
-
-               <div className="p-4 border-t border-slate-700/50 flex-shrink-0 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-slate-900/50 backdrop-blur-sm">
-                    <AnimatePresence mode="wait">
-                    {isVoiceModeActive ? (
-                        <motion.div key="voice-view" initial={{ opacity: 0, y:20 }} animate={{ opacity: 1, y:0 }} exit={{ opacity: 0, y:-20 }} transition={{ duration: 0.3 }} className="flex flex-col items-center gap-2 min-h-[88px] justify-center">
-                            <p className="text-indigo-300 text-sm h-5">{liveTranscript.model}</p>
-                            <p className="text-slate-200 font-medium h-6 text-center">{getVoiceModePlaceholder()}</p>
-                            <button onClick={stopVoiceSession} className="text-sm text-slate-400 hover:text-white">{t('tapToStop')}</button>
-                        </motion.div>
-                    ) : (
-                        <motion.form key="text-view" initial={{ opacity: 0, y:20 }} animate={{ opacity: 1, y:0 }} exit={{ opacity: 0, y:-20 }} transition={{ duration: 0.3 }} onSubmit={handleFormSubmit} className="flex items-center gap-2">
-                             <input type="file" accept="image/*" capture="environment" ref={photoInputRef} onChange={handleImageFileChange} className="hidden" />
-                            <input type="file" accept="image/*" ref={uploadInputRef} onChange={handleImageFileChange} className="hidden" />
-                            <motion.button type="button" onClick={() => setShowImageOptions(true)} disabled={isLoading} className="w-12 h-12 rounded-xl grid place-items-center flex-shrink-0 transition-colors duration-200 text-white bg-slate-700/70 hover:bg-slate-700 disabled:opacity-50">
-                                <CameraIcon className="w-6 h-6" />
-                            </motion.button>
-                            <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={t('askNova')} className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading} />
-                            <motion.button type="submit" disabled={isLoading || !inputValue.trim()} className="w-12 h-12 rounded-xl grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-700 disabled:opacity-50">
-                                <SendIcon className="w-6 h-6" />
-                            </motion.button>
-                        </motion.form>
-                     )}
-                    </AnimatePresence>
-               </div>
-                <motion.button
-                    onClick={toggleVoiceMode}
-                    disabled={isLoading && !isVoiceModeActive}
-                    className={`w-16 h-16 rounded-full grid place-items-center flex-shrink-0 transition-all duration-300 text-white absolute right-4 shadow-lg ${isVoiceModeActive ? 'bg-red-500 hover:bg-red-600' : 'bg-slate-700 hover:bg-slate-600'} bottom-[calc(8rem+env(safe-area-inset-bottom))]`}
-                    animate={{ scale: isVoiceModeActive && voiceConnectionState === 'connected' ? 1.1 : 1 }}
-                    transition={{ type: 'spring', stiffness: 300, damping: 10, repeat: isVoiceModeActive ? Infinity : 0, repeatType: 'reverse' }}
-                >
-                     {isVoiceModeActive ? <XCircleIcon className="w-8 h-8" /> : <MicrophoneIcon className="w-8 h-8" />}
-                </motion.button>
+          <header className="flex-shrink-0 p-4 border-b border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <SparklesIcon className="w-6 h-6 text-indigo-400" />
+              <h2 className="text-lg font-bold text-white">{t('aiAssistant')}</h2>
             </div>
-          </motion.div>
+            <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors text-2xl">&times;</button>
+          </header>
+          
+          <div className="flex-grow p-4 overflow-y-auto flex flex-col">
+            <div className="space-y-4">
+                {messages.length === 1 && !isLoading && !isVoiceModeActive && (
+                    <div className="pb-4">
+                        <div className="flex items-center gap-2 justify-center mb-3">
+                            <SparklesIcon className="w-4 h-4 text-indigo-400" />
+                            <h3 className="text-sm font-semibold text-slate-400">{t('suggestivePromptsTitle')}</h3>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {suggestionPrompts.map((promptKey) => (
+                                <button
+                                    key={promptKey}
+                                    onClick={() => handleSend(t(promptKey as any))}
+                                    className="p-3 text-left bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-300 hover:bg-slate-800 transition-colors duration-200"
+                                >
+                                    {t(promptKey as any)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex items-end gap-2 ${msg.sender === 'user' ? 'justify-end' : ''}`}
+                >
+                  {msg.sender === 'ai' && <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>}
+                  <div className={`max-w-xs md:max-w-md p-3 rounded-xl ${
+                    msg.sender === 'user' ? 'bg-indigo-600 text-white' :
+                    msg.sender === 'ai' ? 'bg-slate-800 text-slate-200' :
+                    'bg-transparent text-slate-500 text-xs italic w-full text-center'
+                  }`}>
+                    <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                  </div>
+                </div>
+              ))}
+              {isLoading && !isVoiceModeActive && (
+                  <div className="flex items-end gap-2">
+                      <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>
+                      <div className="bg-slate-800 text-slate-200 p-3 rounded-xl">
+                          <div className="flex gap-1.5 items-center">
+                              <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse delay-0"></span>
+                              <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></span>
+                              <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></span>
+                          </div>
+                      </div>
+                  </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+          
+          <div className="flex-shrink-0 p-4 border-t border-slate-800 bg-slate-950 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+            {isVoiceModeActive ? (
+              <div className="flex items-center justify-between h-[52px] px-2">
+                <div className="flex flex-col">
+                    <p className="text-slate-200 font-medium text-sm">{getVoiceModePlaceholder()}</p>
+                    <p className="text-indigo-300 text-xs h-4 truncate">{liveTranscript.user || ' '}</p>
+                </div>
+                <button onClick={stopVoiceSession} className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors">
+                    <XCircleIcon className="w-6 h-6" />
+                </button>
+              </div>
+            ) : (
+                <form onSubmit={handleFormSubmit} className="flex items-center gap-2">
+                    <input type="file" accept="image/*" ref={photoInputRef} onChange={handleImageFileChange} className="hidden" />
+                    <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isLoading} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50">
+                        <CameraIcon className="w-6 h-6" />
+                    </button>
+                    <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={t('askNova')} className="w-full bg-slate-800 border-transparent rounded-lg px-4 py-3 h-12 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading} />
+                     <button type="button" onClick={toggleVoiceMode} disabled={isLoading} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50">
+                        <MicrophoneIcon className="w-6 h-6" />
+                    </button>
+                    <button type="submit" disabled={isLoading || !inputValue.trim()} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-800 disabled:text-slate-500 transition-colors">
+                        <SendIcon className="w-6 h-6" />
+                    </button>
+                </form>
+             )}
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
