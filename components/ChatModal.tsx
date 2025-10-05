@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights, ai } from '../services/geminiService';
@@ -128,6 +127,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
 
   // FIX: The `LiveSession` type is not exported from the `@google/genai` package. The type is now inferred from the return type of `ai.live.connect` to ensure type safety.
   const sessionPromise = useRef<ReturnType<typeof ai.live.connect> | null>(null);
+  const sessionId = useRef(0);
   const inputAudioContext = useRef<AudioContext | null>(null);
   const outputAudioContext = useRef<AudioContext | null>(null);
   const mediaStream = useRef<MediaStream | null>(null);
@@ -493,6 +493,8 @@ Respond concisely and naturally, as you are speaking. All function calling capab
     setIsVoiceMode(true);
     setVoiceState('connecting');
 
+    const currentSessionId = ++sessionId.current;
+
     // FIX: Cast `window` to `any` to allow access to the vendor-prefixed `webkitAudioContext` for older browser compatibility, resolving TypeScript errors.
     inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
     outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -516,6 +518,8 @@ Respond concisely and naturally, as you are speaking. All function calling capab
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         callbacks: {
             onopen: () => {
+                if (sessionId.current !== currentSessionId) return;
+
                 setVoiceState('listening');
                 if (!inputAudioContext.current || !mediaStream.current) return;
                 
@@ -523,13 +527,18 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                 audioWorkletNode.current = new AudioWorkletNode(inputAudioContext.current, 'audio-processor');
 
                 audioWorkletNode.current.port.onmessage = (event) => {
+                    if (sessionId.current !== currentSessionId) {
+                        return;
+                    }
                     const pcmBuffer = event.data as ArrayBuffer;
                     const pcmBlob: GeminiBlob = {
                         data: encode(new Uint8Array(pcmBuffer)),
                         mimeType: `audio/pcm;rate=${inputAudioContext.current?.sampleRate || 16000}`,
                     };
                     sessionPromise.current?.then((session) => {
-                        session.sendRealtimeInput({ media: pcmBlob });
+                        if (sessionId.current === currentSessionId) {
+                            session.sendRealtimeInput({ media: pcmBlob });
+                        }
                     });
                 };
 
@@ -537,6 +546,8 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                 audioWorkletNode.current.connect(inputAudioContext.current.destination);
             },
             onmessage: async (message: LiveServerMessage) => {
+                if (sessionId.current !== currentSessionId) return;
+
                 if (message.serverContent?.inputTranscription) {
                     const text = message.serverContent.inputTranscription.text;
                     setLiveInputTranscription(prev => prev + text);
@@ -591,9 +602,11 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                         }
                         
                         sessionPromise.current?.then(session => {
-                            session.sendToolResponse({
-                                functionResponses: { id: call.id, name: call.name, response: { result: resultForModel } }
-                            });
+                            if (sessionId.current === currentSessionId) {
+                                session.sendToolResponse({
+                                    functionResponses: { id: call.id, name: call.name, response: { result: resultForModel } }
+                                });
+                            }
                         });
                     }
                 }
@@ -615,11 +628,15 @@ Respond concisely and naturally, as you are speaking. All function calling capab
             },
             onerror: (e: ErrorEvent) => {
                 console.error('Live session error:', e);
-                showToast(t('voiceError'), 'error');
-                stopVoiceMode();
+                if (sessionId.current === currentSessionId) {
+                    showToast(t('voiceError'), 'error');
+                    stopVoiceMode();
+                }
             },
             onclose: (e: CloseEvent) => {
-                stopVoiceMode();
+                if (sessionId.current === currentSessionId) {
+                    stopVoiceMode();
+                }
             },
         },
         config: {
