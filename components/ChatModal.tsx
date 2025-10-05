@@ -1,5 +1,3 @@
-
-
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights } from '../services/geminiService';
@@ -528,7 +526,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
           }
           setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: errorMessage }]);
           setVoiceConnectionState('error');
-          stopVoiceSession();
       }
   };
 
