@@ -414,7 +414,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   - Loans: ${loanInstructions}`;
 
             sessionPromiseRef.current = ai.live.connect({
-                model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+                model: 'gemini-2.5-flash',
                 callbacks: {
                     onopen: () => {
                         setVoiceConnectionState('connected');
