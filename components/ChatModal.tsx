@@ -475,11 +475,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                             if (!verified) {
                                 sessionPromiseRef.current?.then(session => {
                                     session.sendToolResponse({
-                                        functionResponses: {
+                                        functionResponses: [{
                                             id: call.id,
                                             name: call.name,
-                                            response: { result: { success: false, message: 'User authentication failed or was cancelled.' } }
-                                        }
+                                            response: { error: 'User authentication failed or was cancelled.' }
+                                        }]
                                     });
                                 });
                                 continue;
@@ -490,7 +490,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
 
                             sessionPromiseRef.current?.then(session => {
                                 session.sendToolResponse({
-                                    functionResponses: { id: call.id, name: call.name, response: { result: resultForModel } }
+                                    functionResponses: [{ id: call.id, name: call.name, response: { result: resultForModel } }]
                                 });
                             });
                         }
@@ -513,6 +513,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
               config: {
                   systemInstruction: systemInstruction,
                   responseModalities: [Modality.AUDIO],
+                  speechConfig: {
+                    voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } }
+                  },
                   inputAudioTranscription: {},
                   outputAudioTranscription: {},
                   tools: [{ functionDeclarations: allFunctionDeclarations }]
