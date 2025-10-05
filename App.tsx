@@ -78,9 +78,9 @@ interface BankContextType {
     currentUser: User | null;
     users: User[]; // Will be empty now, but kept for type safety in components that might use it
     transactions: Transaction[];
-    login: (username: string, pin: string) => Promise<boolean>;
+    login: (username: string, password: string) => Promise<boolean>;
     logout: () => void;
-    registerUser: (name: string, username: string, pin: string, email: string, phone: string) => Promise<boolean>;
+    registerUser: (name: string, username: string, pin: string, email: string, phone: string, password: string) => Promise<boolean>;
     transferMoney: (recipientIdentifier: string, amount: number) => Promise<{ success: boolean; message: string }>;
     addCardToUser: (details: CardApplicationDetails) => Promise<{ success: boolean; message: string; newCard?: Card }>;
     addLoanToUser: (details: LoanApplicationDetails) => Promise<{ success: boolean; message: string; newLoan?: Loan }>;
@@ -167,7 +167,7 @@ export default function App() {
         }, 4000);
     };
 
-    const login = async (username: string, pin: string): Promise<boolean> => {
+    const login = async (username: string, password: string): Promise<boolean> => {
         const usersRef = collection(db, "users");
         const q = query(usersRef, where("username", "==", username.toLowerCase()));
         const querySnapshot = await getDocs(q);
@@ -180,7 +180,7 @@ export default function App() {
         const email = userDoc.email;
 
         try {
-            await signInWithEmailAndPassword(auth, email, pin);
+            await signInWithEmailAndPassword(auth, email, password);
             return true;
         } catch (error) {
             console.error("Firebase login error:", error);
@@ -193,7 +193,7 @@ export default function App() {
         setAuthScreen('welcome');
     };
 
-    const registerUser = async (name: string, username: string, pin: string, email: string, phone: string): Promise<boolean> => {
+    const registerUser = async (name: string, username: string, pin: string, email: string, phone: string, password: string): Promise<boolean> => {
         // Check if username is taken
         const usernameQuery = query(collection(db, "users"), where("username", "==", username.toLowerCase()));
         const usernameSnap = await getDocs(usernameQuery);
@@ -203,7 +203,7 @@ export default function App() {
         }
 
         try {
-            const userCredential = await createUserWithEmailAndPassword(auth, email, pin);
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const firebaseUser = userCredential.user;
             
             const newUser: Omit<User, 'uid' | 'cards' | 'loans'> = {
@@ -211,6 +211,7 @@ export default function App() {
                 username: username.toLowerCase(),
                 email,
                 phone,
+                pin,
                 balance: 1000,
                 savingsAccountNumber: generateAccountNumber(),
                 avatarUrl: `https://picsum.photos/seed/${username}/100`,

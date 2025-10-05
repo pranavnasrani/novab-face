@@ -30,7 +30,7 @@ const InputField = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
 );
 
 interface LoginScreenProps {
-  onLogin: (username: string, pin: string) => Promise<boolean>;
+  onLogin: (username: string, password: string) => Promise<boolean>;
   onBack: () => void;
 }
 
@@ -38,7 +38,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onBack }) => 
   const { t } = useTranslation();
   const { loginWithPasskey, isPasskeySupported } = useContext(BankContext);
   const [username, setUsername] = useState('');
-  const [pin, setPin] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
@@ -46,10 +46,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onBack }) => 
     e.preventDefault();
     setIsAuthenticating(true);
     setError('');
-    const success = await onLogin(username, pin);
+    const success = await onLogin(username, password);
     if (!success) {
       setError(t('loginError'));
-      setPin('');
+      setPassword('');
     }
     // On success, the main App component will handle navigation
     setIsAuthenticating(false);
@@ -127,7 +127,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onBack }) => 
                 <InputField type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('usernamePlaceholderLogin')} disabled={isAuthenticating} />
               </motion.div>
               <motion.div variants={itemVariants}>
-                <InputField type="password" value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder="****" disabled={isAuthenticating} />
+                <InputField type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('password')} disabled={isAuthenticating} />
               </motion.div>
               {error && <p className="text-red-400 text-sm text-center !mt-4">{error}</p>}
               <motion.div variants={itemVariants}>

@@ -1,11 +1,12 @@
 
+
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from '../hooks/useTranslation';
 import { UserIcon, LockIcon, ChevronLeftIcon, MailIcon, PhoneIcon } from './icons';
 
 interface RegisterScreenProps {
-  onRegister: (name: string, username: string, pin: string, email: string, phone: string) => Promise<boolean>;
+  onRegister: (name: string, username: string, pin: string, email: string, phone: string, password: string) => Promise<boolean>;
   onBack: () => void;
 }
 
@@ -33,18 +34,19 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
   const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !username || pin.length !== 4 || !email || !phone) {
+    if (!name || !username || pin.length !== 4 || !email || !phone || !password) {
         setError(t('registerError'));
         return;
     }
     setIsSubmitting(true);
     setError('');
-    const success = await onRegister(name, username, pin, email, phone);
+    const success = await onRegister(name, username, pin, email, phone, password);
     if (!success) {
       setError(t('registerErrorUsernameTaken'));
     }
@@ -99,7 +101,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
               <InputField icon={<UserIcon />} type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('usernamePlaceholder')} disabled={isSubmitting} />
               <InputField icon={<MailIcon />} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('emailPlaceholder')} disabled={isSubmitting} />
               <InputField icon={<PhoneIcon />} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('phonePlaceholder')} disabled={isSubmitting} />
-              <InputField icon={<LockIcon />} type="password" value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder="****" disabled={isSubmitting} />
+              <InputField icon={<LockIcon />} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('password')} disabled={isSubmitting} />
+              <InputField icon={<LockIcon />} type="password" inputMode="numeric" pattern="\d*" value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder={t('pin')} disabled={isSubmitting} />
               {error && <p className="text-red-400 text-sm text-center !mt-4">{error}</p>}
               <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-all text-lg" disabled={isSubmitting}>
                 {isSubmitting ? t('submitting') : t('getStarted')}
