@@ -11,7 +11,7 @@ export const SettingsScreen = () => {
     const { t, language, setLanguage } = useTranslation();
 
     return (
-        <div className="p-4 flex flex-col gap-6 text-white">
+        <div className="p-4 flex flex-col gap-6 text-white h-full overflow-y-auto">
             <div className="bg-slate-800 p-6 rounded-3xl flex items-center gap-4">
                 <img src={currentUser?.avatarUrl} alt="avatar" className="w-16 h-16 rounded-full border-2 border-indigo-400"/>
                 <div>
