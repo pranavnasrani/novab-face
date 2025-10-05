@@ -118,6 +118,7 @@ const translations = {
     gotIt: "Got it",
     // Passkeys
     signInWithPasskey: "Sign In with a Passkey",
+    createPasskeyForFasterSignIn: "Create a passkey for faster sign-in",
     authenticating: "Authenticating...",
     passkeys: "Passkeys",
     passkey: "Passkey",
@@ -247,6 +248,7 @@ const translations = {
     gotIt: "Entendido",
     // Passkeys
     signInWithPasskey: "Iniciar sesión con una passkey",
+    createPasskeyForFasterSignIn: "Crear una passkey para iniciar sesión más rápido",
     authenticating: "Autenticando...",
     passkeys: "Passkeys",
     passkey: "Passkey",
@@ -367,6 +369,7 @@ const translations = {
     gotIt: "เข้าใจแล้ว",
     // Passkeys
     signInWithPasskey: "เข้าสู่ระบบด้วยพาสคีย์",
+    createPasskeyForFasterSignIn: "สร้างพาสคีย์เพื่อการลงชื่อเข้าใช้ที่รวดเร็วยิ่งขึ้น",
     authenticating: "กำลังยืนยันตัวตน...",
     passkeys: "พาสคีย์",
     passkey: "พาสคีย์",
@@ -487,6 +490,7 @@ const translations = {
     gotIt: "Nakuha ko",
     // Passkeys
     signInWithPasskey: "Mag-sign In gamit ang Passkey",
+    createPasskeyForFasterSignIn: "Gumawa ng passkey para sa mas mabilis na pag-sign in",
     authenticating: "Nagpapatunay...",
     passkeys: "Mga Passkey",
     passkey: "Passkey",

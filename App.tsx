@@ -80,7 +80,7 @@ interface BankContextType {
     transactions: Transaction[];
     login: (username: string, password: string) => Promise<boolean>;
     logout: () => void;
-    registerUser: (name: string, username: string, pin: string, email: string, phone: string, password: string) => Promise<boolean>;
+    registerUser: (name: string, username: string, pin: string, email: string, phone: string, password: string, createPasskey: boolean) => Promise<boolean>;
     transferMoney: (recipientIdentifier: string, amount: number) => Promise<{ success: boolean; message: string }>;
     addCardToUser: (details: CardApplicationDetails) => Promise<{ success: boolean; message: string; newCard?: Card }>;
     addLoanToUser: (details: LoanApplicationDetails) => Promise<{ success: boolean; message: string; newLoan?: Loan }>;
@@ -89,7 +89,7 @@ interface BankContextType {
     showToast: (message: string, type: 'success' | 'error') => void;
     isPasskeySupported: boolean;
     passkeys: Passkey[];
-    registerPasskey: () => Promise<void>;
+    registerPasskey: (userParam?: User) => Promise<boolean>;
     loginWithPasskey: () => Promise<boolean>;
     removePasskey: (passkeyId: string) => Promise<void>;
     verifyCurrentUserWithPasskey: () => Promise<boolean>;
@@ -195,7 +195,7 @@ export default function App() {
         setAuthScreen('welcome');
     };
 
-    const registerUser = async (name: string, username: string, pin: string, email: string, phone: string, password: string): Promise<boolean> => {
+    const registerUser = async (name: string, username: string, pin: string, email: string, phone: string, password: string, createPasskey: boolean): Promise<boolean> => {
         const usernameQuery = query(collection(db, "users"), where("username", "==", username.toLowerCase()));
         const usernameSnap = await getDocs(usernameQuery);
         if (!usernameSnap.empty) {
@@ -221,6 +221,17 @@ export default function App() {
             
             const newCard = generateMockCard();
             await setDoc(doc(db, `users/${firebaseUser.uid}/cards`, newCard.cardNumber), newCard);
+
+            if (createPasskey) {
+                const fullNewUser: User = {
+                    uid: firebaseUser.uid,
+                    ...newUser,
+                    cards: [newCard],
+                    loans: []
+                };
+                // This will show its own toasts for success/failure
+                await registerPasskey(fullNewUser);
+            }
             
             await signOut(auth);
             
@@ -430,17 +441,18 @@ export default function App() {
         }
     };
     
-    const registerPasskey = async () => {
-        if (!currentUser || !isPasskeySupported) return;
+    const registerPasskey = async (userParam?: User): Promise<boolean> => {
+        const userForPasskey = userParam || currentUser;
+        if (!userForPasskey || !isPasskeySupported) return false;
 
         try {
             const challenge = new Uint8Array(32); crypto.getRandomValues(challenge);
-            const userHandle = new TextEncoder().encode(currentUser.username);
+            const userHandle = new TextEncoder().encode(userForPasskey.username);
 
             const credential = await navigator.credentials.create({
                 publicKey: {
                     challenge, rp: { name: "Nova Bank", id: window.location.hostname },
-                    user: { id: userHandle, name: currentUser.email, displayName: currentUser.name },
+                    user: { id: userHandle, name: userForPasskey.email, displayName: userForPasskey.name },
                     pubKeyCredParams: [{ alg: -7, type: "public-key" }],
                     authenticatorSelection: { residentKey: "required", userVerification: "required" },
                     timeout: 60000,
@@ -451,13 +463,22 @@ export default function App() {
                 const newPasskeyId = base64url.encode((credential as any).rawId);
                 const newPasskey: Omit<Passkey, 'id'> = { created: new Date().toISOString() };
                 
-                await setDoc(doc(db, `users/${currentUser.uid}/passkeys`, newPasskeyId), newPasskey);
-                setPasskeys(prev => [...prev, {id: newPasskeyId, ...newPasskey}]);
+                await setDoc(doc(db, `users/${userForPasskey.uid}/passkeys`, newPasskeyId), newPasskey);
+                
+                // Only update state if called from settings for an existing logged-in user
+                if (!userParam) {
+                    setPasskeys(prev => [...prev, {id: newPasskeyId, ...newPasskey}]);
+                }
                 showToast("Passkey created successfully!", 'success');
+                return true;
             }
+            return false;
         } catch (err) {
             console.error(err);
-            showToast("Failed to create passkey.", 'error');
+            if ((err as Error).name !== 'NotAllowedError') {
+              showToast("Failed to create passkey.", 'error');
+            }
+            return false;
         }
     };
     
@@ -549,6 +570,7 @@ export default function App() {
                         showToast("Account created successfully! Please log in.", 'success');
                         setAuthScreen('login');
                     }}
+                    isPasskeySupported={isPasskeySupported}
                 />;
             case 'welcome':
             default:
