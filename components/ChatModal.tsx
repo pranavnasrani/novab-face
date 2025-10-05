@@ -470,7 +470,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
     outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
 
     try {
-        await inputAudioContext.current.audioWorklet.addModule('audio-processor.js');
+        await inputAudioContext.current.audioWorklet.addModule('/audio-processor.js');
     } catch (e) {
         console.error('Failed to load audio worklet module', e);
         showToast(t('voiceError'), 'error');
