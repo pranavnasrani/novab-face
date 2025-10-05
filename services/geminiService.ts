@@ -214,6 +214,10 @@ export const createChatSession = (userFullName: string, contacts: string[], lang
     };
     const langName = langNameMap[language];
 
+    const contactsInstruction = contacts.length > 0
+        ? `Available contacts by name are: ${contacts.join(', ')}. If a name doesn't match, inform the user.`
+        : "There are no other users registered. If the user asks to send money to someone by name, you must inform them that no contacts were found and they should try an account number, email, or phone instead.";
+
     const activeLoans = userLoans.filter(l => l.status === 'Active');
 
     let loanInstructions = '';
@@ -235,7 +239,7 @@ Your capabilities include initiating payments, providing card information, analy
 1.  **Payments**:
     - If the user asks to "send", "pay", "transfer", or similar, you MUST use the 'initiatePayment' tool.
     - You must have a recipient and an amount. The recipient can be identified by their name, 16-digit account number, email address, or phone number. Prioritize using the account number if provided.
-    - Available contacts by name are: ${contacts.join(', ')}. If a name doesn't match, inform the user. Do not hallucinate contacts.
+    - ${contactsInstruction} Do not hallucinate contacts.
 
 2.  **Spending Analysis**:
     - If the user asks "how much did I spend", "what's my spending breakdown", "show my expenses", or similar, you MUST use the 'getSpendingAnalysis' tool.
