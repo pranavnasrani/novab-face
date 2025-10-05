@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights, ai } from '../services/geminiService';
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
 import { SparklesIcon, SendIcon, CameraIcon, MicrophoneIcon, StopCircleIcon } from './icons';
-// FIX: The `LiveSession` type is not exported by the `@google/genai` library and was removed from the import. Its type will be inferred later.
+// FIX: Removed `LiveSession` as it is not an exported member of '@google/genai'.
 import { Chat, LiveServerMessage, Modality } from '@google/genai';
 import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/firebase';
@@ -81,7 +81,8 @@ async function decodeAudioData(
   return buffer;
 }
 
-// Inlined AudioWorklet processor code to avoid file loading issues.
+// Inlined AudioWorklet processor code. This is the most robust method as it avoids
+// potential server issues with loading an external `audio-processor.js` file.
 const audioProcessorCode = `
 class AudioProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -124,17 +125,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const [liveOutputTranscription, setLiveOutputTranscription] = useState('');
   const finalInputTranscription = useRef('');
   const finalOutputTranscription = useRef('');
-
-  // FIX: The `LiveSession` type is not exported from the `@google/genai` package. The type is now inferred from the return type of `ai.live.connect` to ensure type safety.
-  const sessionPromise = useRef<ReturnType<typeof ai.live.connect> | null>(null);
+  
   const sessionId = useRef(0);
-  const inputAudioContext = useRef<AudioContext | null>(null);
-  const outputAudioContext = useRef<AudioContext | null>(null);
-  const mediaStream = useRef<MediaStream | null>(null);
-  const audioWorkletNode = useRef<AudioWorkletNode | null>(null);
-  const mediaStreamSource = useRef<MediaStreamAudioSourceNode | null>(null);
-  const nextStartTime = useRef(0);
-  const audioSources = useRef(new Set<AudioBufferSourceNode>());
+  // FIX: Replaced the non-exported `LiveSession` type with an inferred type to resolve the TypeScript error.
+  const sessionRef = useRef<Awaited<ReturnType<typeof ai.live.connect>> | null>(null);
+  const inputAudioContextRef = useRef<AudioContext | null>(null);
+  const outputAudioContextRef = useRef<AudioContext | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const nextStartTimeRef = useRef(0);
+  const audioSourcesRef = useRef(new Set<AudioBufferSourceNode>());
 
 
   useEffect(() => {
@@ -451,30 +452,38 @@ Respond concisely and naturally, as you are speaking. All function calling capab
 
   // Voice Mode Functions
   const stopVoiceMode = () => {
+    // Increment session ID first to immediately invalidate any pending operations from the old session.
+    sessionId.current++;
+    
     setIsVoiceMode(false);
     setVoiceState('idle');
-    sessionPromise.current?.then(s => s.close());
-    sessionPromise.current = null;
-    
-    mediaStream.current?.getTracks().forEach(track => track.stop());
-    mediaStream.current = null;
-    
-    audioWorkletNode.current?.port.close();
-    audioWorkletNode.current?.disconnect();
-    audioWorkletNode.current = null;
-    
-    mediaStreamSource.current?.disconnect();
-    mediaStreamSource.current = null;
-    
-    inputAudioContext.current?.close();
-    outputAudioContext.current?.close();
-    inputAudioContext.current = null;
-    outputAudioContext.current = null;
 
-    nextStartTime.current = 0;
-    audioSources.current.forEach(s => s.stop());
-    audioSources.current.clear();
+    sessionRef.current?.close();
+    sessionRef.current = null;
     
+    // Disconnect audio graph to stop processing
+    audioWorkletNodeRef.current?.port.close();
+    audioWorkletNodeRef.current?.disconnect();
+    audioWorkletNodeRef.current = null;
+    mediaStreamSourceRef.current?.disconnect();
+    mediaStreamSourceRef.current = null;
+
+    // Stop media stream tracks
+    mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+    mediaStreamRef.current = null;
+    
+    // Close audio contexts
+    inputAudioContextRef.current?.close();
+    outputAudioContextRef.current?.close();
+    inputAudioContextRef.current = null;
+    outputAudioContextRef.current = null;
+
+    // Clear any pending audio playback
+    nextStartTimeRef.current = 0;
+    audioSourcesRef.current.forEach(s => s.stop());
+    audioSourcesRef.current.clear();
+    
+    // Reset transcriptions
     setLiveInputTranscription('');
     setLiveOutputTranscription('');
     finalInputTranscription.current = '';
@@ -482,9 +491,15 @@ Respond concisely and naturally, as you are speaking. All function calling capab
   };
 
   const startVoiceMode = async () => {
+    // Defensive cleanup of any lingering state from a previous, failed session.
+    stopVoiceMode();
+
+    const currentSessionId = sessionId.current;
+    
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaStream.current = stream;
+        if (sessionId.current !== currentSessionId) { stream.getTracks().forEach(t => t.stop()); return; } // Check if cancelled during permission prompt
+        mediaStreamRef.current = stream;
     } catch (err) {
         showToast(t('micAccessDenied'), 'error');
         return;
@@ -493,16 +508,13 @@ Respond concisely and naturally, as you are speaking. All function calling capab
     setIsVoiceMode(true);
     setVoiceState('connecting');
 
-    const currentSessionId = ++sessionId.current;
-
-    // FIX: Cast `window` to `any` to allow access to the vendor-prefixed `webkitAudioContext` for older browser compatibility, resolving TypeScript errors.
-    inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-    outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+    outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
 
     try {
         const blob = new Blob([audioProcessorCode], { type: 'application/javascript' });
         const objectURL = URL.createObjectURL(blob);
-        await inputAudioContext.current.audioWorklet.addModule(objectURL);
+        await inputAudioContextRef.current.audioWorklet.addModule(objectURL);
         URL.revokeObjectURL(objectURL);
     } catch (e) {
         console.error('Failed to load audio worklet module', e);
@@ -511,143 +523,153 @@ Respond concisely and naturally, as you are speaking. All function calling capab
         return;
     }
     
-    nextStartTime.current = 0;
-    audioSources.current = new Set();
+    nextStartTimeRef.current = 0;
+    audioSourcesRef.current = new Set();
     
-    sessionPromise.current = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-        callbacks: {
-            onopen: () => {
-                if (sessionId.current !== currentSessionId) return;
+    try {
+        const session = await ai.live.connect({
+            model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+            callbacks: {
+                onopen: () => {
+                    if (sessionId.current !== currentSessionId) return;
 
-                setVoiceState('listening');
-                if (!inputAudioContext.current || !mediaStream.current) return;
-                
-                mediaStreamSource.current = inputAudioContext.current.createMediaStreamSource(mediaStream.current);
-                audioWorkletNode.current = new AudioWorkletNode(inputAudioContext.current, 'audio-processor');
+                    setVoiceState('listening');
+                    if (!inputAudioContextRef.current || !mediaStreamRef.current) return;
+                    
+                    mediaStreamSourceRef.current = inputAudioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
+                    audioWorkletNodeRef.current = new AudioWorkletNode(inputAudioContextRef.current, 'audio-processor');
 
-                audioWorkletNode.current.port.onmessage = (event) => {
-                    if (sessionId.current !== currentSessionId) {
-                        return;
-                    }
-                    const pcmBuffer = event.data as ArrayBuffer;
-                    const pcmBlob: GeminiBlob = {
-                        data: encode(new Uint8Array(pcmBuffer)),
-                        mimeType: `audio/pcm;rate=${inputAudioContext.current?.sampleRate || 16000}`,
-                    };
-                    sessionPromise.current?.then((session) => {
-                        if (sessionId.current === currentSessionId) {
-                            session.sendRealtimeInput({ media: pcmBlob });
-                        }
-                    });
-                };
-
-                mediaStreamSource.current.connect(audioWorkletNode.current);
-                audioWorkletNode.current.connect(inputAudioContext.current.destination);
-            },
-            onmessage: async (message: LiveServerMessage) => {
-                if (sessionId.current !== currentSessionId) return;
-
-                if (message.serverContent?.inputTranscription) {
-                    const text = message.serverContent.inputTranscription.text;
-                    setLiveInputTranscription(prev => prev + text);
-                    finalInputTranscription.current += text;
-                }
-                if (message.serverContent?.outputTranscription) {
-                    const text = message.serverContent.outputTranscription.text;
-                    setLiveOutputTranscription(prev => prev + text);
-                    finalOutputTranscription.current += text;
-                }
-
-                const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
-                if (base64EncodedAudioString && outputAudioContext.current) {
-                    setVoiceState('speaking');
-                    nextStartTime.current = Math.max(nextStartTime.current, outputAudioContext.current.currentTime);
-                    const audioBuffer = await decodeAudioData(decode(base64EncodedAudioString), outputAudioContext.current, 24000, 1);
-                    const source = outputAudioContext.current.createBufferSource();
-                    source.buffer = audioBuffer;
-                    source.connect(outputAudioContext.current.destination);
-                    source.addEventListener('ended', () => {
-                        audioSources.current.delete(source);
-                        if (audioSources.current.size === 0) {
-                            setVoiceState('listening');
-                        }
-                    });
-                    source.start(nextStartTime.current);
-                    nextStartTime.current += audioBuffer.duration;
-                    audioSources.current.add(source);
-                }
-
-                if (message.serverContent?.interrupted) {
-                    audioSources.current.forEach(s => s.stop());
-                    audioSources.current.clear();
-                    nextStartTime.current = 0;
-                }
-                
-                if (message.toolCall) {
-                    setVoiceState('processing');
-                    for (const call of message.toolCall.functionCalls) {
-                        const sensitiveActions = ['initiatePayment', 'makeAccountPayment', 'applyForCreditCard', 'applyForLoan', 'requestPaymentExtension'];
-                        let isVerified = true;
-                        if (sensitiveActions.includes(call.name)) {
-                            isVerified = await verifyCurrentUserWithPasskey();
-                        }
-
-                        let resultForModel: object;
-                        if (!isVerified) {
-                             resultForModel = { success: false, message: 'User cancelled the action.' };
-                        } else {
-                            const { resultForModel: res } = await handleFunctionCall(call);
-                            resultForModel = res;
-                        }
+                    audioWorkletNodeRef.current.port.onmessage = (event) => {
+                        if (sessionId.current !== currentSessionId) return; // Stale worklet message, ignore.
                         
-                        sessionPromise.current?.then(session => {
-                            if (sessionId.current === currentSessionId) {
-                                session.sendToolResponse({
+                        if (sessionRef.current) {
+                           const pcmBuffer = event.data as ArrayBuffer;
+                            const pcmBlob: GeminiBlob = {
+                                data: encode(new Uint8Array(pcmBuffer)),
+                                mimeType: `audio/pcm;rate=${inputAudioContextRef.current?.sampleRate || 16000}`,
+                            };
+                            sessionRef.current.sendRealtimeInput({ media: pcmBlob });
+                        }
+                    };
+
+                    mediaStreamSourceRef.current.connect(audioWorkletNodeRef.current);
+                    audioWorkletNodeRef.current.connect(inputAudioContextRef.current.destination);
+                },
+                onmessage: async (message: LiveServerMessage) => {
+                    if (sessionId.current !== currentSessionId) return;
+
+                    if (message.serverContent?.inputTranscription) {
+                        const text = message.serverContent.inputTranscription.text;
+                        setLiveInputTranscription(prev => prev + text);
+                        finalInputTranscription.current += text;
+                    }
+                    if (message.serverContent?.outputTranscription) {
+                        const text = message.serverContent.outputTranscription.text;
+                        setLiveOutputTranscription(prev => prev + text);
+                        finalOutputTranscription.current += text;
+                    }
+
+                    const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
+                    if (base64EncodedAudioString && outputAudioContextRef.current) {
+                        setVoiceState('speaking');
+                        nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputAudioContextRef.current.currentTime);
+                        const audioBuffer = await decodeAudioData(decode(base64EncodedAudioString), outputAudioContextRef.current, 24000, 1);
+                        const source = outputAudioContextRef.current.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(outputAudioContextRef.current.destination);
+                        source.addEventListener('ended', () => {
+                            audioSourcesRef.current.delete(source);
+                            if (audioSourcesRef.current.size === 0) {
+                                setVoiceState('listening');
+                            }
+                        });
+                        source.start(nextStartTimeRef.current);
+                        nextStartTimeRef.current += audioBuffer.duration;
+                        audioSourcesRef.current.add(source);
+                    }
+
+                    if (message.serverContent?.interrupted) {
+                        audioSourcesRef.current.forEach(s => s.stop());
+                        audioSourcesRef.current.clear();
+                        nextStartTimeRef.current = 0;
+                    }
+                    
+                    if (message.toolCall) {
+                        setVoiceState('processing');
+                        for (const call of message.toolCall.functionCalls) {
+                            const sensitiveActions = ['initiatePayment', 'makeAccountPayment', 'applyForCreditCard', 'applyForLoan', 'requestPaymentExtension'];
+                            let isVerified = true;
+                            if (sensitiveActions.includes(call.name)) {
+                                isVerified = await verifyCurrentUserWithPasskey();
+                            }
+
+                            let resultForModel: object;
+                            if (!isVerified) {
+                                 resultForModel = { success: false, message: 'User cancelled the action.' };
+                            } else {
+                                const { resultForModel: res } = await handleFunctionCall(call);
+                                resultForModel = res;
+                            }
+                            
+                            if (sessionRef.current && sessionId.current === currentSessionId) {
+                                sessionRef.current.sendToolResponse({
                                     functionResponses: { id: call.id, name: call.name, response: { result: resultForModel } }
                                 });
                             }
-                        });
+                        }
                     }
-                }
 
-                if (message.serverContent?.turnComplete) {
-                    const fullInput = finalInputTranscription.current;
-                    const fullOutput = finalOutputTranscription.current;
-                    if (fullInput.trim()) {
-                        setMessages(prev => [...prev, { id: messageId.current++, sender: 'user', text: fullInput.trim() }]);
+                    if (message.serverContent?.turnComplete) {
+                        const fullInput = finalInputTranscription.current;
+                        const fullOutput = finalOutputTranscription.current;
+                        if (fullInput.trim()) {
+                            setMessages(prev => [...prev, { id: messageId.current++, sender: 'user', text: fullInput.trim() }]);
+                        }
+                        if (fullOutput.trim()) {
+                             setMessages(prev => [...prev, { id: messageId.current++, sender: 'ai', text: fullOutput.trim() }]);
+                        }
+                        finalInputTranscription.current = '';
+                        finalOutputTranscription.current = '';
+                        setLiveInputTranscription('');
+                        setLiveOutputTranscription('');
                     }
-                    if (fullOutput.trim()) {
-                         setMessages(prev => [...prev, { id: messageId.current++, sender: 'ai', text: fullOutput.trim() }]);
+                },
+                onerror: (e: ErrorEvent) => {
+                    console.error('Live session error:', e);
+                    if (sessionId.current === currentSessionId) {
+                        showToast(t('voiceError'), 'error');
+                        stopVoiceMode();
                     }
-                    finalInputTranscription.current = '';
-                    finalOutputTranscription.current = '';
-                    setLiveInputTranscription('');
-                    setLiveOutputTranscription('');
-                }
+                },
+                onclose: (e: CloseEvent) => {
+                    if (sessionId.current === currentSessionId) {
+                        stopVoiceMode();
+                    }
+                },
             },
-            onerror: (e: ErrorEvent) => {
-                console.error('Live session error:', e);
-                if (sessionId.current === currentSessionId) {
-                    showToast(t('voiceError'), 'error');
-                    stopVoiceMode();
-                }
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+                systemInstruction: getVoiceSystemInstruction(),
+                tools: [{ functionDeclarations: allFunctionDeclarations }],
+                outputAudioTranscription: {},
+                inputAudioTranscription: {},
             },
-            onclose: (e: CloseEvent) => {
-                if (sessionId.current === currentSessionId) {
-                    stopVoiceMode();
-                }
-            },
-        },
-        config: {
-            responseModalities: [Modality.AUDIO],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-            systemInstruction: getVoiceSystemInstruction(),
-            tools: [{ functionDeclarations: allFunctionDeclarations }],
-            outputAudioTranscription: {},
-            inputAudioTranscription: {},
-        },
-    });
+        });
+        
+        // Critical check: if the user cancelled while the connection was being established, close the new session and exit.
+        if (sessionId.current !== currentSessionId) {
+            session.close();
+            return;
+        }
+
+        sessionRef.current = session;
+
+    } catch (error) {
+         console.error("Failed to start voice session:", error);
+         showToast(t('voiceError'), 'error');
+         stopVoiceMode();
+    }
   };
 
   const toggleVoiceMode = () => {
@@ -701,7 +723,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                                     boxShadow: { duration: 0.5, ease: "easeOut" }
                                 }}
                             >
-                                {voiceState === 'processing' ? (
+                                {voiceState === 'processing' || voiceState === 'connecting' ? (
                                     <div className="w-24 h-24 rounded-full border-4 border-slate-700 border-t-indigo-500 animate-spin flex items-center justify-center"></div>
                                 ) : (
                                     <StopCircleIcon className="w-24 h-24 text-indigo-500" />
@@ -762,7 +784,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                     </div>
                   </div>
                 ))}
-                {isLoading && (
+                {isLoading && !isVoiceMode && (
                     <div className="flex items-end gap-2">
                         <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>
                         <div className="bg-slate-800 text-slate-200 p-3 rounded-xl">
