@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { motion } from 'framer-motion';
+// FIX: Imported the `Variants` type from framer-motion to correctly type the animation variants object.
+import { motion, Variants } from 'framer-motion';
 import { useTranslation } from '../hooks/useTranslation';
 import { BankContext } from '../App';
 import { DonutChart } from './DonutChart';
@@ -8,7 +9,8 @@ import { LightbulbIcon, SparklesIcon, ArrowTrendingUpIcon, TrendingDownIcon, Pig
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
-const cardVariants = {
+// FIX: Explicitly typed `cardVariants` with the `Variants` type from framer-motion to resolve type inference issues.
+const cardVariants: Variants = {
     hidden: { opacity: 0, y: 20 },
     visible: (i: number) => ({
         opacity: 1,

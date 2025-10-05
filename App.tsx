@@ -8,8 +8,7 @@ import { WelcomeScreen } from './components/OnboardingScreen'; // Repurposed as 
 import { RegisterScreen } from './components/DataScreen'; // Repurposed as RegisterScreen
 import { CheckCircleIcon, XCircleIcon } from './components/icons';
 import { auth, db } from './services/firebase';
-import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, query, where, getDocs, addDoc, runTransaction, updateDoc, deleteDoc, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+// FIX: Removed v9 imports that caused "module has no exported member" errors. The logic is now using the v8 SDK syntax provided by the `auth` and `db` exports from firebase.ts.
 import { getComprehensiveInsights, ai as geminiAi } from './services/geminiService';
 import { useTranslation } from './hooks/useTranslation';
 import { GoogleGenAI } from '@google/genai';
@@ -121,22 +120,24 @@ export default function App() {
     const [isInsightsLoading, setIsInsightsLoading] = useState(false);
     
     const loadUserAndData = async (uid: string) => {
-        const userDocRef = doc(db, "users", uid);
-        const userDocSnap = await getDoc(userDocRef);
+        // FIX: Switched to Firebase v8 syntax.
+        const userDocRef = db.collection("users").doc(uid);
+        const userDocSnap = await userDocRef.get();
 
-        if (userDocSnap.exists()) {
+        if (userDocSnap.exists) {
             const userData = userDocSnap.data() as Omit<User, 'uid' | 'cards' | 'loans'>;
             
-            const cardsQuery = query(collection(db, `users/${uid}/cards`));
-            const loansQuery = query(collection(db, `users/${uid}/loans`));
-            const passkeysQuery = query(collection(db, `users/${uid}/passkeys`));
-            const transactionsQuery = query(collection(db, "transactions"), where("uid", "==", uid), orderBy("timestamp", "desc"), firestoreLimit(50));
+            // FIX: Switched to Firebase v8 syntax.
+            const cardsQuery = db.collection(`users/${uid}/cards`);
+            const loansQuery = db.collection(`users/${uid}/loans`);
+            const passkeysQuery = db.collection(`users/${uid}/passkeys`);
+            const transactionsQuery = db.collection("transactions").where("uid", "==", uid).orderBy("timestamp", "desc").limit(50);
 
             const [cardDocs, loanDocs, passkeyDocs, transactionDocs] = await Promise.all([
-                getDocs(cardsQuery),
-                getDocs(loansQuery),
-                getDocs(passkeysQuery),
-                getDocs(transactionsQuery),
+                cardsQuery.get(),
+                loansQuery.get(),
+                passkeysQuery.get(),
+                transactionDocs.get(),
             ]);
 
             const cards = cardDocs.docs.map(d => d.data() as Card);
@@ -148,7 +149,8 @@ export default function App() {
             setPasskeys(passkeys);
             setTransactions(transactions);
         } else {
-            signOut(auth);
+            // FIX: Switched to Firebase v8 syntax.
+            auth.signOut();
         }
     };
 
@@ -157,7 +159,8 @@ export default function App() {
         const supported = !!(navigator.credentials && navigator.credentials.create && window.PublicKeyCredential);
         setIsPasskeySupported(supported);
 
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        // FIX: Switched to Firebase v8 syntax.
+        const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
             setIsLoading(true);
             setInsightsData(null); // Reset insights on auth change
             if (firebaseUser) {
@@ -205,9 +208,10 @@ export default function App() {
 
 
     const login = async (username: string, password: string): Promise<boolean> => {
-        const usersRef = collection(db, "users");
-        const q = query(usersRef, where("username", "==", username.toLowerCase()));
-        const querySnapshot = await getDocs(q);
+        // FIX: Switched to Firebase v8 syntax.
+        const usersRef = db.collection("users");
+        const q = usersRef.where("username", "==", username.toLowerCase());
+        const querySnapshot = await q.get();
 
         if (querySnapshot.empty) {
             return false;
@@ -217,7 +221,8 @@ export default function App() {
         const email = userDoc.email;
 
         try {
-            await signInWithEmailAndPassword(auth, email, password);
+            // FIX: Switched to Firebase v8 syntax.
+            await auth.signInWithEmailAndPassword(email, password);
             return true;
         } catch (error) {
             console.error("Firebase login error:", error);
@@ -226,20 +231,26 @@ export default function App() {
     };
 
     const logout = () => {
-        signOut(auth);
+        // FIX: Switched to Firebase v8 syntax.
+        auth.signOut();
         setAuthScreen('welcome');
     };
 
     const registerUser = async (name: string, username: string, email: string, phone: string, password: string, createPasskey: boolean): Promise<boolean> => {
-        const usernameQuery = query(collection(db, "users"), where("username", "==", username.toLowerCase()));
-        const usernameSnap = await getDocs(usernameQuery);
+        // FIX: Switched to Firebase v8 syntax.
+        const usernameQuery = db.collection("users").where("username", "==", username.toLowerCase());
+        const usernameSnap = await usernameQuery.get();
         if (!usernameSnap.empty) {
             return false;
         }
 
         try {
-            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            // FIX: Switched to Firebase v8 syntax.
+            const userCredential = await auth.createUserWithEmailAndPassword(email, password);
             const firebaseUser = userCredential.user;
+            if (!firebaseUser) {
+              throw new Error("User creation failed.");
+            }
             
             const newUser: Omit<User, 'uid' | 'cards' | 'loans'> = {
                 name,
@@ -251,10 +262,12 @@ export default function App() {
                 avatarUrl: `https://picsum.photos/seed/${username}/100`,
             };
 
-            await setDoc(doc(db, "users", firebaseUser.uid), newUser);
+            // FIX: Switched to Firebase v8 syntax.
+            await db.collection("users").doc(firebaseUser.uid).set(newUser);
             
             const newCard = generateMockCard();
-            await setDoc(doc(db, `users/${firebaseUser.uid}/cards`, newCard.cardNumber), newCard);
+            // FIX: Switched to Firebase v8 syntax.
+            await db.collection(`users/${firebaseUser.uid}/cards`).doc(newCard.cardNumber).set(newCard);
 
             if (createPasskey) {
                 const fullNewUser: User = {
@@ -267,7 +280,8 @@ export default function App() {
                 await registerPasskey(fullNewUser);
             }
             
-            await signOut(auth);
+            // FIX: Switched to Firebase v8 syntax.
+            await auth.signOut();
             
             return true;
         } catch (error) {
@@ -282,14 +296,15 @@ export default function App() {
         if (amount <= 0) return { success: false, message: 'Error: Payment amount must be positive.' };
         if (currentUser.balance < amount) return { success: false, message: `Error: Insufficient funds.` };
     
-        const usersRef = collection(db, "users");
-        const q1 = query(usersRef, where("name", "==", recipientIdentifier));
-        const q2 = query(usersRef, where("savingsAccountNumber", "==", recipientIdentifier));
-        const q3 = query(usersRef, where("email", "==", recipientIdentifier));
-        const q4 = query(usersRef, where("phone", "==", recipientIdentifier));
-        const q5 = query(usersRef, where("username", "==", recipientIdentifier.toLowerCase()));
+        // FIX: Switched to Firebase v8 syntax.
+        const usersRef = db.collection("users");
+        const q1 = usersRef.where("name", "==", recipientIdentifier);
+        const q2 = usersRef.where("savingsAccountNumber", "==", recipientIdentifier);
+        const q3 = usersRef.where("email", "==", recipientIdentifier);
+        const q4 = usersRef.where("phone", "==", recipientIdentifier);
+        const q5 = usersRef.where("username", "==", recipientIdentifier.toLowerCase());
     
-        const results = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3), getDocs(q4), getDocs(q5)]);
+        const results = await Promise.all([q1.get(), q2.get(), q3.get(), q4.get(), q5.get()]);
         const recipientDoc = results.flatMap(snap => snap.docs)[0];
     
         if (!recipientDoc) return { success: false, message: `Error: Contact or account "${recipientIdentifier}" not found.` };
@@ -297,27 +312,30 @@ export default function App() {
         const recipient = { uid: recipientDoc.id, ...recipientDoc.data() } as User;
         if (recipient.uid === currentUser.uid) return { success: false, message: 'Error: Cannot send money to yourself.' };
     
-        const senderRef = doc(db, "users", currentUser.uid);
-        const recipientRef = doc(db, "users", recipient.uid);
+        // FIX: Switched to Firebase v8 syntax.
+        const senderRef = db.collection("users").doc(currentUser.uid);
+        const recipientRef = db.collection("users").doc(recipient.uid);
     
         try {
-            await runTransaction(db, async (transaction) => {
+            // FIX: Switched to Firebase v8 syntax.
+            await db.runTransaction(async (transaction) => {
                 const senderDoc = await transaction.get(senderRef);
-                if (!senderDoc.exists() || senderDoc.data().balance < amount) {
+                if (!senderDoc.exists || (senderDoc.data()?.balance ?? 0) < amount) {
                     throw new Error("Insufficient funds.");
                 }
     
-                transaction.update(senderRef, { balance: senderDoc.data().balance - amount });
+                transaction.update(senderRef, { balance: (senderDoc.data()?.balance ?? 0) - amount });
                 transaction.update(recipientRef, { balance: recipient.balance + amount });
             });
     
             const timestamp = new Date().toISOString();
-            const transactionsRef = collection(db, "transactions");
+            // FIX: Switched to Firebase v8 syntax.
+            const transactionsRef = db.collection("transactions");
     
-            await addDoc(transactionsRef, {
+            await transactionsRef.add({
                 uid: currentUser.uid, type: 'debit', amount, description: `Payment to ${recipient.name}`, timestamp, partyName: recipient.name, category: 'Transfers',
             });
-            await addDoc(transactionsRef, {
+            await transactionsRef.add({
                 uid: recipient.uid, type: 'credit', amount, description: `Payment from ${currentUser.name}`, timestamp, partyName: currentUser.name, category: 'Transfers',
             });
             
@@ -338,7 +356,8 @@ export default function App() {
         }
 
         const newCard = generateMockCard();
-        await setDoc(doc(db, `users/${currentUser.uid}/cards`, newCard.cardNumber), newCard);
+        // FIX: Switched to Firebase v8 syntax.
+        await db.collection(`users/${currentUser.uid}/cards`).doc(newCard.cardNumber).set(newCard);
         
         setCurrentUser(prev => prev ? ({ ...prev, cards: [...prev.cards, newCard] }) : null);
 
@@ -363,14 +382,16 @@ export default function App() {
             startDate: new Date().toISOString(), paymentDueDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
         };
 
-        const userRef = doc(db, "users", currentUser.uid);
-        await runTransaction(db, async (transaction) => {
+        // FIX: Switched to Firebase v8 syntax.
+        const userRef = db.collection("users").doc(currentUser.uid);
+        await db.runTransaction(async (transaction) => {
             const userDoc = await transaction.get(userRef);
-            if (!userDoc.exists()) throw "User not found!";
-            const newBalance = userDoc.data().balance + loanAmount;
+            if (!userDoc.exists) throw "User not found!";
+            const newBalance = (userDoc.data()?.balance ?? 0) + loanAmount;
             transaction.update(userRef, { balance: newBalance });
         });
-        await setDoc(doc(db, `users/${currentUser.uid}/loans`, newLoan.id), newLoan);
+        // FIX: Switched to Firebase v8 syntax.
+        await db.collection(`users/${currentUser.uid}/loans`).doc(newLoan.id).set(newLoan);
         
         setCurrentUser(prev => prev ? ({ ...prev, balance: prev.balance + loanAmount, loans: [...prev.loans, newLoan] }) : null);
 
@@ -389,17 +410,20 @@ export default function App() {
         if (type === 'card') {
             const card = currentUser.cards.find(c => c.cardNumber.slice(-4) === accountId);
             if (!card) return { success: false, message: `Error: Card ending in ${accountId} not found.`};
-            docRef = doc(db, `users/${currentUser.uid}/cards`, card.cardNumber);
+            // FIX: Switched to Firebase v8 syntax.
+            docRef = db.collection(`users/${currentUser.uid}/cards`).doc(card.cardNumber);
             originalDueDate = new Date(card.paymentDueDate);
         } else {
             const loan = currentUser.loans.find(l => l.id === accountId);
             if (!loan) return { success: false, message: `Error: Loan with ID ${accountId} not found.`};
-            docRef = doc(db, `users/${currentUser.uid}/loans`, loan.id);
+            // FIX: Switched to Firebase v8 syntax.
+            docRef = db.collection(`users/${currentUser.uid}/loans`).doc(loan.id);
             originalDueDate = new Date(loan.paymentDueDate);
         }
 
         const newDueDate = new Date(originalDueDate.setDate(originalDueDate.getDate() + 14));
-        await updateDoc(docRef, { paymentDueDate: newDueDate.toISOString() });
+        // FIX: Switched to Firebase v8 syntax.
+        await docRef.update({ paymentDueDate: newDueDate.toISOString() });
         
         const formattedDate = newDueDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
         return { success: true, message: `Success! Your payment due date has been extended to ${formattedDate}.`, newDueDate: newDueDate.toISOString() };
@@ -411,13 +435,15 @@ export default function App() {
         let paymentAmount = 0;
         let message = '';
 
-        const userRef = doc(db, "users", currentUser.uid);
+        // FIX: Switched to Firebase v8 syntax.
+        const userRef = db.collection("users").doc(currentUser.uid);
 
         try {
-            await runTransaction(db, async (t) => {
+            // FIX: Switched to Firebase v8 syntax.
+            await db.runTransaction(async (t) => {
                 const userDoc = await t.get(userRef);
-                if (!userDoc.exists()) throw new Error("User not found.");
-                const userData = userDoc.data();
+                if (!userDoc.exists) throw new Error("User not found.");
+                const userData = userDoc.data()!;
                 
                 if (accountType === 'card') {
                     const card = currentUser.cards.find(c => c.cardNumber.slice(-4) === accountId);
@@ -432,7 +458,8 @@ export default function App() {
                     if (paymentAmount <= 0) throw new Error("A valid payment amount is required.");
                     if (userData.balance < paymentAmount) throw new Error("Insufficient funds.");
 
-                    const cardRef = doc(db, `users/${currentUser.uid}/cards`, card.cardNumber);
+                    // FIX: Switched to Firebase v8 syntax.
+                    const cardRef = db.collection(`users/${currentUser.uid}/cards`).doc(card.cardNumber);
                     t.update(userRef, { balance: userData.balance - paymentAmount });
                     t.update(cardRef, { 
                         creditBalance: Math.max(0, card.creditBalance - paymentAmount),
@@ -454,7 +481,8 @@ export default function App() {
                     if (paymentAmount > loan.remainingBalance) paymentAmount = loan.remainingBalance;
                     if (userData.balance < paymentAmount) throw new Error("Insufficient funds.");
 
-                    const loanRef = doc(db, `users/${currentUser.uid}/loans`, loan.id);
+                    // FIX: Switched to Firebase v8 syntax.
+                    const loanRef = db.collection(`users/${currentUser.uid}/loans`).doc(loan.id);
                     const newRemainingBalance = loan.remainingBalance - paymentAmount;
 
                     t.update(userRef, { balance: userData.balance - paymentAmount });
@@ -497,7 +525,8 @@ export default function App() {
                 const newPasskeyId = base64url.encode((credential as any).rawId);
                 const newPasskey: Omit<Passkey, 'id'> = { created: new Date().toISOString() };
                 
-                await setDoc(doc(db, `users/${userForPasskey.uid}/passkeys`, newPasskeyId), newPasskey);
+                // FIX: Switched to Firebase v8 syntax.
+                await db.collection(`users/${userForPasskey.uid}/passkeys`).doc(newPasskeyId).set(newPasskey);
                 
                 // Only update state if called from settings for an existing logged-in user
                 if (!userParam) {
@@ -528,9 +557,10 @@ export default function App() {
 
             if (assertion && (assertion as any).response.userHandle) {
                 const username = new TextDecoder().decode((assertion as any).response.userHandle);
-                const usersRef = collection(db, "users");
-                const q = query(usersRef, where("username", "==", username.toLowerCase()));
-                const querySnapshot = await getDocs(q);
+                // FIX: Switched to Firebase v8 syntax.
+                const usersRef = db.collection("users");
+                const q = usersRef.where("username", "==", username.toLowerCase());
+                const querySnapshot = await q.get();
 
                 if (querySnapshot.empty) { showToast("Passkey not recognized.", 'error'); return false; }
                 
@@ -538,8 +568,9 @@ export default function App() {
                 const uid = userDoc.id;
                 const credentialId = base64url.encode((assertion as any).rawId);
 
-                const passkeyDoc = await getDoc(doc(db, `users/${uid}/passkeys`, credentialId));
-                if (passkeyDoc.exists()) {
+                // FIX: Switched to Firebase v8 syntax.
+                const passkeyDoc = await db.collection(`users/${uid}/passkeys`).doc(credentialId).get();
+                if (passkeyDoc.exists) {
                     await loadUserAndData(uid);
                     return true;
                 }
@@ -579,7 +610,8 @@ export default function App() {
     
     const removePasskey = async (passkeyId: string) => {
         if (!currentUser) return;
-        await deleteDoc(doc(db, `users/${currentUser.uid}/passkeys`, passkeyId));
+        // FIX: Switched to Firebase v8 syntax.
+        await db.collection(`users/${currentUser.uid}/passkeys`).doc(passkeyId).delete();
         setPasskeys(prev => prev.filter(p => p.id !== passkeyId));
         showToast("Passkey removed.", 'success');
     };

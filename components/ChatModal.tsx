@@ -4,21 +4,33 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights, ai } from '../services/geminiService';
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
 import { SparklesIcon, SendIcon, CameraIcon, MicrophoneIcon, StopCircleIcon } from './icons';
-// FIX: The `LiveSession` type is not exported by the `@google/genai` library and was removed from the import. Its type will be inferred later.
-import { Chat, LiveServerMessage, Modality } from '@google/genai';
+import { Chat } from '@google/genai';
 import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
+// FIX: Add type declarations for the SpeechRecognition API, which is not yet a standard part of TypeScript's DOM typings. This resolves compilation errors related to voice input.
+interface SpeechRecognition {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onstart: () => void;
+  onresult: (event: any) => void;
+  onerror: (event: any) => void;
+  onend: () => void;
+  stop: () => void;
+  start: () => void;
+}
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
+  }
+}
+
 interface ChatModalProps {
   isOpen: boolean;
   onClose: () => void;
-}
-
-// The Blob type expected by the Gemini API for media objects
-interface GeminiBlob {
-    data: string;
-    mimeType: string;
 }
 
 type Message = {
@@ -43,68 +55,6 @@ const suggestionPrompts = [
   'prompt1', 'prompt2', 'prompt3', 'prompt4'
 ];
 
-// Audio helper functions
-const encode = (bytes: Uint8Array) => {
-  let binary = '';
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-const decode = (base64: string) => {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
-
-async function decodeAudioData(
-  data: Uint8Array,
-  ctx: AudioContext,
-  sampleRate: number,
-  numChannels: number,
-): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer);
-  const frameCount = dataInt16.length / numChannels;
-  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-
-  for (let channel = 0; channel < numChannels; channel++) {
-    const channelData = buffer.getChannelData(channel);
-    for (let i = 0; i < frameCount; i++) {
-      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
-    }
-  }
-  return buffer;
-}
-
-// Inlined AudioWorklet processor code to avoid file loading issues.
-const audioProcessorCode = `
-class AudioProcessor extends AudioWorkletProcessor {
-  constructor() {
-    super();
-  }
-  process(inputs) {
-    const inputChannelData = inputs[0][0];
-    if (!inputChannelData) {
-      return true;
-    }
-    const pcmData = new Int16Array(inputChannelData.length);
-    for (let i = 0; i < inputChannelData.length; i++) {
-      const s = Math.max(-1, Math.min(1, inputChannelData[i]));
-      pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-    }
-    this.port.postMessage(pcmData.buffer, [pcmData.buffer]);
-    return true;
-  }
-}
-registerProcessor('audio-processor', AudioProcessor);
-`;
-
 export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const { currentUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey, showToast } = useContext(BankContext);
   const { t, language } = useTranslation();
@@ -120,22 +70,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   
   // Voice mode state and refs
   const [isVoiceMode, setIsVoiceMode] = useState(false);
-  const [voiceState, setVoiceState] = useState<'idle' | 'connecting' | 'listening' | 'processing' | 'speaking'>('idle');
-  const [liveInputTranscription, setLiveInputTranscription] = useState('');
-  const [liveOutputTranscription, setLiveOutputTranscription] = useState('');
-  const finalInputTranscription = useRef('');
-  const finalOutputTranscription = useRef('');
-
-  // FIX: The `LiveSession` type is not exported from the `@google/genai` package. The type is now inferred from the return type of `ai.live.connect` to ensure type safety.
-  const sessionPromise = useRef<ReturnType<typeof ai.live.connect> | null>(null);
-  const inputAudioContext = useRef<AudioContext | null>(null);
-  const outputAudioContext = useRef<AudioContext | null>(null);
-  const mediaStream = useRef<MediaStream | null>(null);
-  const audioWorkletNode = useRef<AudioWorkletNode | null>(null);
-  const mediaStreamSource = useRef<MediaStreamAudioSourceNode | null>(null);
-  const nextStartTime = useRef(0);
-  const audioSources = useRef(new Set<AudioBufferSourceNode>());
-
+  const [voiceState, setVoiceState] = useState<'idle' | 'listening' | 'speaking'>('idle');
+  const [transcribedText, setTranscribedText] = useState('');
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const lastSpokenId = useRef<number | null>(null);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -157,6 +95,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   
   useEffect(() => {
     if (isOpen && currentUser && contactsLoaded && !chat) {
+        messageId.current = 0;
         setMessages([{ id: messageId.current++, sender: 'ai', text: t('chatGreeting', { name: currentUser?.name.split(' ')[0] })}]);
         setInputValue('');
         setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
@@ -171,6 +110,19 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Effect to speak new AI/system messages when in voice mode
+  useEffect(() => {
+      if (!isVoiceMode || isLoading) return;
+      const lastMessage = messages[messages.length - 1];
+
+      if (lastMessage && lastMessage.id !== lastSpokenId.current) {
+          if (lastMessage.sender === 'ai' || (lastMessage.sender === 'system' && !lastMessage.text.toLowerCase().includes('passkey'))) {
+              speak(lastMessage.text);
+              lastSpokenId.current = lastMessage.id;
+          }
+      }
+  }, [messages, isVoiceMode, isLoading]);
 
   const handleFunctionCall = async (call: { name?: string, args?: any }): Promise<{ success: boolean; message: string; resultForModel: object }> => {
       if (!call.name) {
@@ -379,258 +331,91 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       handleSend(inputValue);
   }
 
-  const getVoiceSystemInstruction = () => {
-    if (!currentUser) return '';
-    const langNameMap = { en: 'English', es: 'Spanish', th: 'Thai', tl: 'Tagalog' };
-    const langName = langNameMap[language];
-
-    const contactsInstruction = contacts.length > 0
-        ? `Available contacts by name are: ${contacts.join(', ')}. If a name doesn't match, inform the user.`
-        : "There are no other users registered. If the user asks to send money to someone by name, you must inform them that no contacts were found and they should try an account number, email, or phone instead.";
-
-    const activeLoans = currentUser.loans.filter(l => l.status === 'Active');
-
-    let loanInstructions = '';
-    if (activeLoans.length === 0) {
-        loanInstructions = "The user has no active loans. If they ask to pay a loan or request an extension, you must inform them they don't have one.";
-    } else if (activeLoans.length === 1) {
-        loanInstructions = `The user has one active loan. If they want to pay their loan or request an extension, assume it is this one and use its ID: '${activeLoans[0].id}'. You do not need to ask for the loan ID.`;
-    } else {
-        const loanDescriptions = activeLoans.map((l) => `a loan for $${l.loanAmount} (ID: '${l.id}')`).join('; ');
-        loanInstructions = `The user has multiple active loans: ${loanDescriptions}. If the user asks to pay a loan or request an extension, you MUST ask for clarification (e.g., "Which loan would you like to pay? The one for $${activeLoans[0].loanAmount} or..."). Once they specify, you must use the corresponding loan ID for the 'accountId'. Do NOT ask the user for the loan ID directly.`;
-    }
-
-    const cardDescriptions = currentUser.cards.length > 0 ? `The user has the following card(s): ${currentUser.cards.map(c => `${c.cardType} ending in ${c.cardNumber.slice(-4)}`).join(', ')}.` : "The user has no credit cards.";
-
-
-    return `You are a world-class banking voice assistant named Nova for a user named ${currentUser.name}.
-Respond concisely and naturally, as you are speaking. All function calling capabilities are available via tools.
-
-1.  **Payments**:
-    - If the user asks to "send", "pay", "transfer", or similar, you MUST use the 'initiatePayment' tool.
-    - You must have a recipient and an amount. The recipient can be identified by their name, 16-digit account number, email address, or phone number. Prioritize using the account number if provided.
-    - ${contactsInstruction} Do not hallucinate contacts.
-
-2.  **Spending Analysis**:
-    - If the user asks "how much did I spend", "what's my spending breakdown", "show my expenses", or similar, you MUST use the 'getSpendingAnalysis' tool.
-    - This tool uses AI to provide a categorical breakdown of their spending from all their accounts for a given period.
-
-3.  **Card & Account Information**:
-    - If the user asks for their "balance," "how much money do I have," or similar, you MUST use the 'getAccountBalance' tool. This provides a full financial overview (savings, card debt, loans).
-    - If the user asks about their credit card "bill," "statement," "due date," or "minimum payment," you MUST use the 'getCardStatementDetails' tool.
-    - To get recent transactions for a credit card, use 'getCardTransactions'. To get transactions for the main savings account, use 'getAccountTransactions'. If the user just asks for "recent transactions" without specifying, use 'getAccountTransactions'.
-    - ${cardDescriptions} If a card is not specified for a card-related query, assume they mean their primary (first) card if they have one.
-
-4.  **Bill & Loan Payments**:
-    - If the user wants to "pay my bill," "make a payment," or similar for a card or loan, you MUST use the 'makeAccountPayment' tool.
-    - You must clarify the payment amount (e.g., minimum, statement, full, or custom).
-    - For card payments, you must provide the last 4 digits of the card number as the \`accountId\`.
-    - ${loanInstructions}
-
-5.  **Payment Extensions**:
-    - If the user says they "can't pay," "need more time," or asks for an "extension" on a bill or loan, you MUST use the 'requestPaymentExtension' tool.
-    - For card extensions, you must provide the last 4 digits of the card number as the \`accountId\`.
-    - For loan extensions, follow the same logic as for loan payments above to determine the correct account ID.
-
-6.  **Credit Card Application**:
-    - If the user expresses intent to "apply for a credit card," you MUST use the 'applyForCreditCard' tool.
-    - Before calling the tool, you MUST collect all required information: address, date of birth, employment status, employer, and annual income. You already know the user's name is ${currentUser.name}, so do not ask for it.
-    - Ask for any missing information conversationally.
-
-7.  **Loan Application**:
-    - If the user wants to "apply for a loan," you MUST use the 'applyForLoan' tool.
-    - Before calling the tool, collect the desired loan amount, the loan term in months, and the other personal/financial details: address, date of birth, employment status, and annual income. You already know the user's name is ${currentUser.name}, so do not ask for it.
-    - Ask for missing information conversationally.
-
-8.  **General Conversation**:
-    - For any other queries, provide polite, brief, and helpful responses.
-    - Always maintain a friendly and professional tone.
-    - VERY IMPORTANT: You MUST respond exclusively in ${langName}. Do not switch languages.`;
+  // Voice Mode: Text-to-Speech
+  const speak = (text: string) => {
+      if (!('speechSynthesis' in window)) {
+          showToast('Text-to-speech not supported in this browser.', 'error');
+          return;
+      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = language;
+      utterance.onstart = () => setVoiceState('speaking');
+      utterance.onend = () => {
+          setVoiceState('idle');
+          setIsVoiceMode(false); // End voice mode after speaking is done
+      };
+      utterance.onerror = (event) => {
+          console.error('Speech synthesis error', event.error);
+          stopVoiceMode();
+      };
+      window.speechSynthesis.speak(utterance);
   };
-
 
   // Voice Mode Functions
   const stopVoiceMode = () => {
+    recognitionRef.current?.stop();
+    window.speechSynthesis.cancel();
     setIsVoiceMode(false);
     setVoiceState('idle');
-    sessionPromise.current?.then(s => s.close());
-    sessionPromise.current = null;
-    
-    mediaStream.current?.getTracks().forEach(track => track.stop());
-    mediaStream.current = null;
-    
-    audioWorkletNode.current?.port.close();
-    audioWorkletNode.current?.disconnect();
-    audioWorkletNode.current = null;
-    
-    mediaStreamSource.current?.disconnect();
-    mediaStreamSource.current = null;
-    
-    inputAudioContext.current?.close();
-    outputAudioContext.current?.close();
-    inputAudioContext.current = null;
-    outputAudioContext.current = null;
-
-    nextStartTime.current = 0;
-    audioSources.current.forEach(s => s.stop());
-    audioSources.current.clear();
-    
-    setLiveInputTranscription('');
-    setLiveOutputTranscription('');
-    finalInputTranscription.current = '';
-    finalOutputTranscription.current = '';
+    setTranscribedText('');
+    lastSpokenId.current = null;
   };
 
-  const startVoiceMode = async () => {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaStream.current = stream;
-    } catch (err) {
-        showToast(t('micAccessDenied'), 'error');
-        return;
-    }
+  const startVoiceMode = () => {
+      // FIX: Use the typed `window.SpeechRecognition` and `window.webkitSpeechRecognition` which are now available due to the global type declarations.
+      const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognitionImpl) {
+          showToast('Speech recognition is not supported by your browser.', 'error');
+          return;
+      }
 
-    setIsVoiceMode(true);
-    setVoiceState('connecting');
+      recognitionRef.current = new SpeechRecognitionImpl();
+      const recognition = recognitionRef.current;
+      
+      recognition.lang = language;
+      recognition.interimResults = true;
+      recognition.continuous = false;
 
-    // FIX: Cast `window` to `any` to allow access to the vendor-prefixed `webkitAudioContext` for older browser compatibility, resolving TypeScript errors.
-    inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-    outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      recognition.onstart = () => {
+          setVoiceState('listening');
+      };
 
-    try {
-        const blob = new Blob([audioProcessorCode], { type: 'application/javascript' });
-        const objectURL = URL.createObjectURL(blob);
-        await inputAudioContext.current.audioWorklet.addModule(objectURL);
-        URL.revokeObjectURL(objectURL);
-    } catch (e) {
-        console.error('Failed to load audio worklet module', e);
-        showToast(t('voiceError'), 'error');
-        stopVoiceMode();
-        return;
-    }
-    
-    nextStartTime.current = 0;
-    audioSources.current = new Set();
-    
-    sessionPromise.current = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-        callbacks: {
-            onopen: () => {
-                setVoiceState('listening');
-                if (!inputAudioContext.current || !mediaStream.current) return;
-                
-                mediaStreamSource.current = inputAudioContext.current.createMediaStreamSource(mediaStream.current);
-                audioWorkletNode.current = new AudioWorkletNode(inputAudioContext.current, 'audio-processor');
+      recognition.onresult = (event) => {
+          let interim = '';
+          let final = '';
+          for (let i = 0; i < event.results.length; ++i) {
+              if (event.results[i].isFinal) {
+                  final += event.results[i][0].transcript;
+              } else {
+                  interim += event.results[i][0].transcript;
+              }
+          }
+          setTranscribedText(final || interim);
+          if (final) {
+              recognition.stop();
+              handleSend(final.trim());
+          }
+      };
 
-                audioWorkletNode.current.port.onmessage = (event) => {
-                    const pcmBuffer = event.data as ArrayBuffer;
-                    const pcmBlob: GeminiBlob = {
-                        data: encode(new Uint8Array(pcmBuffer)),
-                        mimeType: `audio/pcm;rate=${inputAudioContext.current?.sampleRate || 16000}`,
-                    };
-                    sessionPromise.current?.then((session) => {
-                        session.sendRealtimeInput({ media: pcmBlob });
-                    });
-                };
+      recognition.onerror = (event) => {
+          console.error('Speech recognition error:', event.error);
+          if (event.error === 'no-speech' || event.error === 'network') {
+              showToast(t('voiceError'), 'error');
+          }
+          stopVoiceMode();
+      };
+      
+      recognition.onend = () => {
+          if (voiceState === 'listening') {
+              // Ended without a final result, so just stop.
+              stopVoiceMode();
+          }
+      };
 
-                mediaStreamSource.current.connect(audioWorkletNode.current);
-                audioWorkletNode.current.connect(inputAudioContext.current.destination);
-            },
-            onmessage: async (message: LiveServerMessage) => {
-                if (message.serverContent?.inputTranscription) {
-                    const text = message.serverContent.inputTranscription.text;
-                    setLiveInputTranscription(prev => prev + text);
-                    finalInputTranscription.current += text;
-                }
-                if (message.serverContent?.outputTranscription) {
-                    const text = message.serverContent.outputTranscription.text;
-                    setLiveOutputTranscription(prev => prev + text);
-                    finalOutputTranscription.current += text;
-                }
-
-                const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
-                if (base64EncodedAudioString && outputAudioContext.current) {
-                    setVoiceState('speaking');
-                    nextStartTime.current = Math.max(nextStartTime.current, outputAudioContext.current.currentTime);
-                    const audioBuffer = await decodeAudioData(decode(base64EncodedAudioString), outputAudioContext.current, 24000, 1);
-                    const source = outputAudioContext.current.createBufferSource();
-                    source.buffer = audioBuffer;
-                    source.connect(outputAudioContext.current.destination);
-                    source.addEventListener('ended', () => {
-                        audioSources.current.delete(source);
-                        if (audioSources.current.size === 0) {
-                            setVoiceState('listening');
-                        }
-                    });
-                    source.start(nextStartTime.current);
-                    nextStartTime.current += audioBuffer.duration;
-                    audioSources.current.add(source);
-                }
-
-                if (message.serverContent?.interrupted) {
-                    audioSources.current.forEach(s => s.stop());
-                    audioSources.current.clear();
-                    nextStartTime.current = 0;
-                }
-                
-                if (message.toolCall) {
-                    setVoiceState('processing');
-                    for (const call of message.toolCall.functionCalls) {
-                        const sensitiveActions = ['initiatePayment', 'makeAccountPayment', 'applyForCreditCard', 'applyForLoan', 'requestPaymentExtension'];
-                        let isVerified = true;
-                        if (sensitiveActions.includes(call.name)) {
-                            isVerified = await verifyCurrentUserWithPasskey();
-                        }
-
-                        let resultForModel: object;
-                        if (!isVerified) {
-                             resultForModel = { success: false, message: 'User cancelled the action.' };
-                        } else {
-                            const { resultForModel: res } = await handleFunctionCall(call);
-                            resultForModel = res;
-                        }
-                        
-                        sessionPromise.current?.then(session => {
-                            session.sendToolResponse({
-                                functionResponses: { id: call.id, name: call.name, response: { result: resultForModel } }
-                            });
-                        });
-                    }
-                }
-
-                if (message.serverContent?.turnComplete) {
-                    const fullInput = finalInputTranscription.current;
-                    const fullOutput = finalOutputTranscription.current;
-                    if (fullInput.trim()) {
-                        setMessages(prev => [...prev, { id: messageId.current++, sender: 'user', text: fullInput.trim() }]);
-                    }
-                    if (fullOutput.trim()) {
-                         setMessages(prev => [...prev, { id: messageId.current++, sender: 'ai', text: fullOutput.trim() }]);
-                    }
-                    finalInputTranscription.current = '';
-                    finalOutputTranscription.current = '';
-                    setLiveInputTranscription('');
-                    setLiveOutputTranscription('');
-                }
-            },
-            onerror: (e: ErrorEvent) => {
-                console.error('Live session error:', e);
-                showToast(t('voiceError'), 'error');
-                stopVoiceMode();
-            },
-            onclose: (e: CloseEvent) => {
-                stopVoiceMode();
-            },
-        },
-        config: {
-            responseModalities: [Modality.AUDIO],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-            systemInstruction: getVoiceSystemInstruction(),
-            tools: [{ functionDeclarations: allFunctionDeclarations }],
-            outputAudioTranscription: {},
-            inputAudioTranscription: {},
-        },
-    });
+      setIsVoiceMode(true);
+      setTranscribedText('');
+      recognition.start();
   };
 
   const toggleVoiceMode = () => {
@@ -668,32 +453,54 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                         exit={{ opacity: 0 }}
                         className="absolute inset-0 bg-slate-950 z-20 flex flex-col justify-between p-6"
                      >
-                        <div className="text-center h-1/3 flex flex-col justify-end">
-                            <p className="text-lg text-slate-400 min-h-[2.5em]">{liveInputTranscription}</p>
+                        <div className="text-center h-1/3 flex flex-col justify-center items-center">
+                             <p className="text-xl text-white font-semibold min-h-[3em] px-4">
+                                 {transcribedText || (voiceState === 'listening' && t('speakNow'))}
+                             </p>
                         </div>
                         <div className="flex flex-col items-center gap-4">
                             <motion.button 
                                 onClick={stopVoiceMode} 
-                                className="text-white"
-                                animate={{
-                                    scale: voiceState === 'listening' ? [1, 1.1, 1] : 1,
-                                    boxShadow: voiceState === 'speaking' ? '0 0 0 10px rgba(79, 70, 229, 0.4)' : '0 0 0 0px rgba(79, 70, 229, 0)',
-                                }}
-                                transition={{
-                                    scale: { duration: 1.5, repeat: Infinity, ease: "easeInOut" },
-                                    boxShadow: { duration: 0.5, ease: "easeOut" }
-                                }}
+                                className="text-white relative w-24 h-24 flex items-center justify-center"
                             >
-                                {voiceState === 'processing' ? (
-                                    <div className="w-24 h-24 rounded-full border-4 border-slate-700 border-t-indigo-500 animate-spin flex items-center justify-center"></div>
+                                <AnimatePresence>
+                                {(voiceState === 'listening' || voiceState === 'speaking') &&
+                                    <motion.div
+                                        initial={{ scale: 0, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        exit={{ scale: 0, opacity: 0}}
+                                        className="absolute inset-0 bg-indigo-500/30 rounded-full"
+                                    />
+                                }
+                                </AnimatePresence>
+                                <motion.div
+                                    className="absolute inset-0 bg-indigo-500/20 rounded-full"
+                                    animate={{ scale: voiceState === 'listening' ? [1, 1.2, 1] : 1 }}
+                                    transition={{
+                                        scale: { duration: 1.5, repeat: Infinity, ease: "easeInOut" }
+                                    }}
+                                />
+
+                                {isLoading ? (
+                                    <div className="w-20 h-20 rounded-full border-4 border-slate-700 border-t-indigo-500 animate-spin flex items-center justify-center"></div>
                                 ) : (
-                                    <StopCircleIcon className="w-24 h-24 text-indigo-500" />
+                                    voiceState === 'speaking' ? <SparklesIcon className="w-12 h-12 text-indigo-400" /> : <MicrophoneIcon className="w-12 h-12 text-indigo-400" />
                                 )}
                             </motion.button>
                             <span className="text-slate-400 text-sm">{t('tapToStop')}</span>
                         </div>
-                        <div className="text-center h-1/3 flex flex-col justify-start">
-                             <p className="text-xl text-white font-semibold min-h-[3em]">{liveOutputTranscription}</p>
+                        <div className="text-center h-1/3 flex flex-col justify-center">
+                            <AnimatePresence>
+                            {voiceState === 'speaking' && (
+                                <motion.p 
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    className="text-lg text-slate-300"
+                                >
+                                    {t('aiAssistant')} is speaking...
+                                </motion.p>
+                            )}
+                            </AnimatePresence>
                         </div>
                      </motion.div>
                 )}
@@ -745,7 +552,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                     </div>
                   </div>
                 ))}
-                {isLoading && (
+                {isLoading && !isVoiceMode && (
                     <div className="flex items-end gap-2">
                         <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>
                         <div className="bg-slate-800 text-slate-200 p-3 rounded-xl">
