@@ -572,33 +572,28 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       {isOpen && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="absolute inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-end"
+          className="fixed inset-0 bg-black/60 backdrop-blur-md z-40 flex items-end justify-center"
           onClick={onClose}
         >
           <motion.div
             initial={{ y: "100%" }} animate={{ y: "0%" }} exit={{ y: "100%" }}
-            transition={{ type: 'spring', damping: 40, stiffness: 300 }}
-            className="bg-slate-900 w-full h-[calc(100%_-_env(safe-area-inset-top)_-_1rem)] rounded-t-3xl flex flex-col overflow-hidden"
+            transition={{ type: 'spring', damping: 30, stiffness: 250 }}
+            className="bg-slate-900 w-full max-w-md h-[calc(100%_-_env(safe-area-inset-top)_-_1rem)] rounded-t-3xl flex flex-col overflow-hidden relative"
             onClick={(e) => e.stopPropagation()}
           >
             <motion.div
-                className="absolute -bottom-1/4 left-1/2 -translate-x-1/2 w-[150%] aspect-square rounded-full bg-gradient-radial from-indigo-500/20 via-indigo-500/5 to-transparent pointer-events-none"
-                initial={{ scale: 0, y: 150 }}
-                animate={{ scale: 1, y: 0 }}
-                transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute -bottom-1/3 left-1/2 -translate-x-1/2 w-[200%] aspect-square rounded-full bg-gradient-radial from-indigo-500/25 via-indigo-500/5 to-transparent pointer-events-none"
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
             />
-            <motion.div
-                className="relative z-10 flex flex-col w-full h-full"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.25, duration: 0.4 }}
-            >
-              <header className="p-4 border-b border-slate-700 flex items-center justify-between flex-shrink-0">
+            <div className="relative z-10 flex flex-col w-full h-full">
+              <header className="p-4 border-b border-slate-700/50 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-2">
                   <SparklesIcon className="w-6 h-6 text-indigo-400" />
                   <h2 className="text-lg font-bold text-white">{isVoiceModeActive ? t('voiceMode') : t('aiAssistant')}</h2>
                 </div>
-                <button onClick={onClose} className="text-slate-400 hover:text-white">&times;</button>
+                <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-full text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors text-2xl">&times;</button>
               </header>
               
               <div className="flex-grow p-4 overflow-y-auto flex flex-col">
@@ -620,7 +615,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                                         key={promptKey}
                                         variants={promptItemVariants}
                                         onClick={() => handleSend(t(promptKey as any))}
-                                        className="p-3 text-left bg-slate-800 rounded-xl text-sm text-slate-300 hover:bg-slate-700 transition-colors duration-200"
+                                        className="p-3 text-left bg-slate-800/70 rounded-xl text-sm text-slate-300 hover:bg-slate-700 transition-colors duration-200 backdrop-blur-sm"
                                     >
                                         {t(promptKey as any)}
                                     </motion.button>
@@ -637,8 +632,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                       {msg.sender === 'ai' && <div className="w-8 h-8 rounded-full bg-indigo-500 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-white" /></div>}
                       <div className={`max-w-xs md:max-w-md p-3 rounded-2xl ${
                         msg.sender === 'user' ? 'bg-indigo-600 text-white rounded-br-none' :
-                        msg.sender === 'ai' ? 'bg-slate-700 text-slate-200 rounded-bl-none' :
-                        'bg-slate-800 text-slate-400 text-sm italic w-full text-center'
+                        msg.sender === 'ai' ? 'bg-slate-700/80 text-slate-200 rounded-bl-none' :
+                        'bg-slate-800/70 text-slate-400 text-sm italic w-full text-center'
                       }`}>
                         <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
                       </div>
@@ -647,7 +642,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                   {isLoading && !isVoiceModeActive && (
                       <motion.div className="flex items-end gap-2">
                           <div className="w-8 h-8 rounded-full bg-indigo-500 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-white" /></div>
-                          <div className="bg-slate-700 text-slate-200 p-3 rounded-2xl rounded-bl-none">
+                          <div className="bg-slate-700/80 text-slate-200 p-3 rounded-2xl rounded-bl-none">
                               <div className="flex gap-1.5 items-center">
                                   <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse delay-0"></span>
                                   <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></span>
@@ -664,25 +659,27 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                   {showImageOptions && (
                       <motion.div
                           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                          className="absolute inset-0 bg-black/50 z-10 flex items-end"
+                          className="fixed inset-0 bg-black/30 z-50 flex items-end justify-center"
                           onClick={() => setShowImageOptions(false)}
                       >
                           <motion.div
                               initial={{ y: "100%" }} animate={{ y: "0%" }} exit={{ y: "100%" }}
-                              transition={{ type: 'spring', damping: 40, stiffness: 300 }}
+                              transition={{ type: 'spring', damping: 30, stiffness: 250 }}
                               onClick={(e) => e.stopPropagation()}
-                              className="bg-slate-800 rounded-t-2xl p-4 w-full max-w-md mx-auto pb-[calc(1rem+env(safe-area-inset-bottom))]"
+                              className="bg-slate-800/80 backdrop-blur-lg border-t border-slate-700 rounded-t-2xl p-4 w-full max-w-md mx-auto pb-[calc(1rem+env(safe-area-inset-bottom))]"
                           >
-                              <div className="w-12 h-1.5 bg-slate-600 rounded-full mx-auto mb-4"></div>
-                              <button onClick={() => { photoInputRef.current?.click(); setShowImageOptions(false); }} className="w-full text-left p-3 rounded-lg hover:bg-slate-700 text-white text-lg">{t('takePhoto')}</button>
-                              <button onClick={() => { uploadInputRef.current?.click(); setShowImageOptions(false); }} className="w-full text-left p-3 rounded-lg hover:bg-slate-700 text-white text-lg">{t('uploadImage')}</button>
-                              <button onClick={() => setShowImageOptions(false)} className="w-full text-center p-3 mt-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-lg font-semibold">{t('close')}</button>
+                              <div className="w-10 h-1.5 bg-slate-600 rounded-full mx-auto mb-5"></div>
+                              <div className="space-y-2">
+                                  <button onClick={() => { photoInputRef.current?.click(); setShowImageOptions(false); }} className="w-full text-left p-3 rounded-xl hover:bg-slate-700/70 text-white text-base transition-colors">{t('takePhoto')}</button>
+                                  <button onClick={() => { uploadInputRef.current?.click(); setShowImageOptions(false); }} className="w-full text-left p-3 rounded-xl hover:bg-slate-700/70 text-white text-base transition-colors">{t('uploadImage')}</button>
+                              </div>
+                              <button onClick={() => setShowImageOptions(false)} className="w-full text-center p-3 mt-4 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-base font-semibold transition-colors">{t('close')}</button>
                           </motion.div>
                       </motion.div>
                   )}
               </AnimatePresence>
 
-               <div className="p-4 border-t border-slate-700 flex-shrink-0 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+               <div className="p-4 border-t border-slate-700/50 flex-shrink-0 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-slate-900/50 backdrop-blur-sm">
                     <AnimatePresence mode="wait">
                     {isVoiceModeActive ? (
                         <motion.div key="voice-view" initial={{ opacity: 0, y:20 }} animate={{ opacity: 1, y:0 }} exit={{ opacity: 0, y:-20 }} transition={{ duration: 0.3 }} className="flex flex-col items-center gap-2 min-h-[88px] justify-center">
@@ -694,10 +691,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                         <motion.form key="text-view" initial={{ opacity: 0, y:20 }} animate={{ opacity: 1, y:0 }} exit={{ opacity: 0, y:-20 }} transition={{ duration: 0.3 }} onSubmit={handleFormSubmit} className="flex items-center gap-2">
                              <input type="file" accept="image/*" capture="environment" ref={photoInputRef} onChange={handleImageFileChange} className="hidden" />
                             <input type="file" accept="image/*" ref={uploadInputRef} onChange={handleImageFileChange} className="hidden" />
-                            <motion.button type="button" onClick={() => setShowImageOptions(true)} disabled={isLoading} className="w-12 h-12 rounded-xl grid place-items-center flex-shrink-0 transition-colors duration-200 text-white bg-slate-700 hover:bg-slate-600 disabled:opacity-50">
+                            <motion.button type="button" onClick={() => setShowImageOptions(true)} disabled={isLoading} className="w-12 h-12 rounded-xl grid place-items-center flex-shrink-0 transition-colors duration-200 text-white bg-slate-700/70 hover:bg-slate-700 disabled:opacity-50">
                                 <CameraIcon className="w-6 h-6" />
                             </motion.button>
-                            <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={t('askNova')} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading} />
+                            <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={t('askNova')} className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading} />
                             <motion.button type="submit" disabled={isLoading || !inputValue.trim()} className="w-12 h-12 rounded-xl grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-700 disabled:opacity-50">
                                 <SendIcon className="w-6 h-6" />
                             </motion.button>
@@ -714,7 +711,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                          {isVoiceModeActive ? <XCircleIcon className="w-8 h-8" /> : <MicrophoneIcon className="w-8 h-8" />}
                     </motion.button>
                </div>
-            </motion.div>
+            </div>
           </motion.div>
         </motion.div>
       )}
