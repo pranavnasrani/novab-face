@@ -1,7 +1,7 @@
 
 
 import { GoogleGenAI, FunctionDeclaration, Type, Chat, GenerateContentResponse } from '@google/genai';
-import { Transaction, Card, Loan } from '../types';
+import { Transaction, Card, Loan, FinancialInsights } from '../types';
 
 // FIX: Added a fallback of an empty string to prevent a crash if the API key is not defined.
 const API_KEY = process.env.API_KEY || '';
@@ -336,7 +336,9 @@ Return the information as a JSON object. If any piece of information is unclear 
     }
 };
 
-export const analyzeSpendingWithAI = async (transactions: Transaction[], language: 'en' | 'es' | 'th' | 'tl'): Promise<{ name: string; value: number }[]> => {
+const formatCurrencyForPrompt = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+
+export const generateFinancialInsights = async (transactions: Transaction[], currentBalance: number, language: 'en' | 'es' | 'th' | 'tl'): Promise<FinancialInsights | null> => {
     const langNameMap = {
         en: 'English',
         es: 'Spanish',
@@ -345,91 +347,64 @@ export const analyzeSpendingWithAI = async (transactions: Transaction[], languag
     };
     const languageName = langNameMap[language];
 
-    const expenseTransactions = transactions
-        .filter(tx => tx.type === 'debit')
-        .map(tx => `- ${tx.description}: $${tx.amount.toFixed(2)} on ${new Date(tx.timestamp).toLocaleDateString()}`)
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+    const recentTransactions = transactions
+        .filter(tx => new Date(tx.timestamp) >= sixtyDaysAgo)
+        .map(tx => `${tx.type === 'debit' ? 'Expense' : 'Income'}: ${tx.description} - $${tx.amount.toFixed(2)} on ${new Date(tx.timestamp).toLocaleDateString()}`)
         .join('\n');
-    
-    if (!expenseTransactions) {
-        return [];
+
+    if (!recentTransactions) {
+        return null;
     }
 
-    const prompt = `Analyze the following list of financial transactions. Group them into meaningful spending categories (e.g., 'Food & Dining', 'Transport', 'Shopping', 'Bills & Utilities', 'Entertainment', 'Groceries', 'Transfers', 'Other'). Sum the total amount for each category.
-
-Transactions:
-${expenseTransactions}
-
-Return the result as a JSON array of objects. Each object must have a "name" (string) and a "value" (number) key. The "name" for each category MUST be translated into ${languageName}. Example: [{ "name": "Shopping", "value": 150.75 }, { "name": "Food & Dining", "value": 85.20 }]`;
+    const prompt = `You are a financial analyst AI. Analyze the user's financial data and provide insights. The user's current savings account balance is ${formatCurrencyForPrompt(currentBalance)}. Here are their transactions from the last 60 days:\n\n${recentTransactions}\n\nProvide the following insights in a JSON object. All text summaries and names MUST be in ${languageName}:\n
+1.  **spendingAnalysis**: Categorize all 'debit'/'Expense' transactions from the **most recent 30 days** into spending categories (e.g., 'Food & Dining', 'Transport', 'Shopping'). Sum the total for each category.
+2.  **spendingTrend**: Compare the total spending (all debits) of the most recent 30 days with the 30 days prior (days 31-60). Provide a concise 'summary' sentence and the 'percentageChange' (e.g., 15 for a 15% increase, -10 for a 10% decrease).
+3.  **cashFlowForecast**: Based on the income (credits) and recurring expenses (debits) in the provided history, forecast the user's savings account balance in 30 days from now. Start with the current balance of ${formatCurrencyForPrompt(currentBalance)}. Provide a 'summary' sentence and the final 'projectedBalance'.
+4.  **savingOpportunities**: Based on the spending patterns, provide 2-3 short, actionable saving tips as an array of strings.`;
 
     const responseSchema = {
-        type: Type.ARRAY,
-        items: {
-            type: Type.OBJECT,
-            properties: {
-                name: { type: Type.STRING },
-                value: { type: Type.NUMBER },
+        type: Type.OBJECT,
+        properties: {
+            spendingAnalysis: {
+                type: Type.ARRAY,
+                description: "Categorical breakdown of spending for the most recent 30 days.",
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        name: { type: Type.STRING, description: "Category name." },
+                        value: { type: Type.NUMBER, description: "Total amount spent in this category." }
+                    },
+                    required: ['name', 'value']
+                }
             },
-            required: ['name', 'value'],
-        },
-    };
-
-    try {
-        // FIX: Replaced the deprecated API with `ai.models.generateContent`, using the recommended `gemini-2.5-flash` model and a structured JSON response schema.
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: responseSchema
+            spendingTrend: {
+                type: Type.OBJECT,
+                description: "Comparison of spending between the last 30 days and the previous 30 days.",
+                properties: {
+                    summary: { type: Type.STRING, description: "A one-sentence summary of the trend." },
+                    percentageChange: { type: Type.NUMBER, description: "The percentage change. Positive for increase, negative for decrease." }
+                },
+                required: ['summary', 'percentageChange']
+            },
+            cashFlowForecast: {
+                type: Type.OBJECT,
+                description: "A 30-day forecast of the user's main account balance.",
+                properties: {
+                    summary: { type: Type.STRING, description: "A one-sentence summary of the forecast." },
+                    projectedBalance: { type: Type.NUMBER, description: "The projected final balance after 30 days." }
+                },
+                required: ['summary', 'projectedBalance']
+            },
+            savingOpportunities: {
+                type: Type.ARRAY,
+                description: "A list of 2-3 actionable saving tips based on spending habits.",
+                items: { type: Type.STRING }
             }
-        });
-
-        // FIX: Updated response handling to use the `.text` property instead of the deprecated `.text()` method.
-        const jsonString = response.text.trim();
-        return JSON.parse(jsonString);
-    } catch (error) {
-        console.error("Error analyzing spending with AI:", error);
-        return [];
-    }
-};
-
-export const identifySubscriptions = async (transactions: Transaction[], language: 'en' | 'es' | 'th' | 'tl'): Promise<{ name: string; amount: number; }[]> => {
-    const langNameMap = {
-        en: 'English',
-        es: 'Spanish',
-        th: 'Thai',
-        tl: 'Tagalog'
-    };
-    const languageName = langNameMap[language];
-
-    const expenseTransactions = transactions
-        .filter(tx => tx.type === 'debit')
-        .map(tx => `- ${tx.description}: $${tx.amount.toFixed(2)} on ${new Date(tx.timestamp).toLocaleDateString()}`)
-        .join('\n');
-    
-    if (!expenseTransactions) {
-        return [];
-    }
-
-    const prompt = `Analyze the following list of financial transactions to identify recurring monthly subscriptions. Look for merchants that are typically subscription-based (e.g., Netflix, Spotify, gym memberships, software services) and payments with consistent amounts.
-
-Transactions:
-${expenseTransactions}
-
-Return the result as a JSON array of objects. Each object must have a "name" (string, the name of the merchant/service) and "amount" (number, the typical monthly cost). Do not include regular bills like utilities or one-time purchases. The "name" must be the merchant name, not a category.
-
-Example: [{ "name": "Netflix", "amount": 15.99 }, { "name": "Spotify", "amount": 9.99 }]`;
-
-    const responseSchema = {
-        type: Type.ARRAY,
-        items: {
-            type: Type.OBJECT,
-            properties: {
-                name: { type: Type.STRING },
-                amount: { type: Type.NUMBER },
-            },
-            required: ['name', 'amount'],
         },
+        required: ['spendingAnalysis', 'spendingTrend', 'cashFlowForecast', 'savingOpportunities']
     };
 
     try {
@@ -441,11 +416,18 @@ Example: [{ "name": "Netflix", "amount": 15.99 }, { "name": "Spotify", "amount":
                 responseSchema: responseSchema
             }
         });
-
         const jsonString = response.text.trim();
-        return JSON.parse(jsonString);
+        const parsedData = JSON.parse(jsonString);
+        
+        // Sort spending analysis by value
+        if (parsedData.spendingAnalysis) {
+            parsedData.spendingAnalysis.sort((a: {value: number}, b: {value: number}) => b.value - a.value);
+        }
+
+        return parsedData;
+
     } catch (error) {
-        console.error("Error identifying subscriptions with AI:", error);
-        return [];
+        console.error("Error generating financial insights with AI:", error);
+        return null;
     }
 };

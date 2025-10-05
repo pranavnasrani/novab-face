@@ -166,6 +166,13 @@ export const ArrowTrendingUpIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
+export const ArrowTrendingDownIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <polyline points="22 17 13.5 8.5 8.5 13.5 2 7" />
+        <polyline points="16 17 22 17 22 11" />
+    </svg>
+);
+
 export const CameraIcon = ({ className }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
         <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path>
@@ -226,5 +233,14 @@ export const LightbulbIcon = ({ className }: { className?: string }) => (
         <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
         <path d="M9 18h6" />
         <path d="M10 22h4" />
+    </svg>
+);
+
+export const PiggyBankIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <path d="M10 20.5c0 .8-.7 1.5-1.5 1.5.8 0 1.5.7 1.5 1.5H8.5A1.5 1.5 0 0 1 7 22v-1.5" />
+        <path d="M15 20.5c0 .8.7 1.5 1.5 1.5-.8 0-1.5.7-1.5 1.5h2.5A1.5 1.5 0 0 0 19 22v-1.5" />
+        <path d="M2 12.5c0-2.8 2.2-5 5-5h1.5c.7 0 1.3-.3 1.7-.8L12 4l1.8 2.7c.4.5 1 .8 1.7.8H17c2.8 0 5 2.2 5 5v1.3c0 .8-.7 1.5-1.5 1.5h-15A1.5 1.5 0 0 1 2 13.8V12.5Z" />
+        <path d="M10.2 11.2c-.3-.6-.9-1-1.7-1-.8 0-1.4.4-1.7 1" />
     </svg>
 );

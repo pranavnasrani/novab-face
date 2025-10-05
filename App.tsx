@@ -1,6 +1,6 @@
-import React, { useState, createContext, useEffect } from 'react';
+import React, { useState, createContext, useEffect, useCallback } from 'react';
 import { generateMockCard, generateMockLoan, generateAccountNumber } from './constants';
-import { User, Transaction, Card, Loan } from './types';
+import { User, Transaction, Card, Loan, FinancialInsights } from './types';
 import { LoginScreen } from './components/LoginScreen';
 import { Dashboard } from './components/Dashboard';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -10,6 +10,8 @@ import { CheckCircleIcon, XCircleIcon } from './components/icons';
 import { auth, db } from './services/firebase';
 import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, addDoc, runTransaction, updateDoc, deleteDoc, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { generateFinancialInsights } from './services/geminiService';
+import { useTranslation } from './hooks/useTranslation';
 
 
 const base64url = {
@@ -78,6 +80,8 @@ interface BankContextType {
     currentUser: User | null;
     users: User[]; // Will be empty now, but kept for type safety in components that might use it
     transactions: Transaction[];
+    insightsData: FinancialInsights | null;
+    isGeneratingInsights: boolean;
     login: (username: string, password: string) => Promise<boolean>;
     logout: () => void;
     registerUser: (name: string, username: string, email: string, phone: string, password: string, createPasskey: boolean) => Promise<boolean>;
@@ -102,6 +106,7 @@ type AuthScreen = 'welcome' | 'login' | 'register';
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
 export default function App() {
+    const { language } = useTranslation();
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [authScreen, setAuthScreen] = useState<AuthScreen>('welcome');
@@ -109,7 +114,21 @@ export default function App() {
     const [isPasskeySupported, setIsPasskeySupported] = useState(false);
     const [passkeys, setPasskeys] = useState<Passkey[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [insightsData, setInsightsData] = useState<FinancialInsights | null>(null);
+    const [isGeneratingInsights, setIsGeneratingInsights] = useState(true);
     
+    const generateAndSetInsights = useCallback(async (user: User, userTransactions: Transaction[]) => {
+        setIsGeneratingInsights(true);
+        const allTransactions = [
+            ...userTransactions,
+            ...user.cards.flatMap(c => c.transactions)
+        ];
+        const insights = await generateFinancialInsights(allTransactions, user.balance, language);
+        setInsightsData(insights);
+        setIsGeneratingInsights(false);
+    }, [language]);
+
+
     const loadUserAndData = async (uid: string) => {
         const userDocRef = doc(db, "users", uid);
         const userDocSnap = await getDoc(userDocRef);
@@ -120,7 +139,7 @@ export default function App() {
             const cardsQuery = query(collection(db, `users/${uid}/cards`));
             const loansQuery = query(collection(db, `users/${uid}/loans`));
             const passkeysQuery = query(collection(db, `users/${uid}/passkeys`));
-            const transactionsQuery = query(collection(db, "transactions"), where("uid", "==", uid), orderBy("timestamp", "desc"), firestoreLimit(20));
+            const transactionsQuery = query(collection(db, "transactions"), where("uid", "==", uid), orderBy("timestamp", "desc")); // Get all transactions for insights
 
             const [cardDocs, loanDocs, passkeyDocs, transactionDocs] = await Promise.all([
                 getDocs(cardsQuery),
@@ -133,10 +152,16 @@ export default function App() {
             const loans = loanDocs.docs.map(d => d.data() as Loan);
             const passkeys = passkeyDocs.docs.map(d => ({ id: d.id, ...d.data() } as Passkey));
             const transactions = transactionDocs.docs.map(d => d.data() as Transaction);
+            
+            const fullUser = { uid, ...userData, cards, loans };
 
-            setCurrentUser({ uid, ...userData, cards, loans });
+            setCurrentUser(fullUser);
             setPasskeys(passkeys);
             setTransactions(transactions);
+            
+            // Trigger insights generation
+            await generateAndSetInsights(fullUser, transactions);
+
         } else {
             signOut(auth);
         }
@@ -155,12 +180,13 @@ export default function App() {
                 setCurrentUser(null);
                 setTransactions([]);
                 setPasskeys([]);
+                setInsightsData(null);
             }
             setIsLoading(false);
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [generateAndSetInsights]);
 
     const showToast = (message: string, type: 'success' | 'error') => {
         setToast({ message, type });
@@ -549,7 +575,7 @@ export default function App() {
         showToast("Passkey removed.", 'success');
     };
 
-    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey };
+    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, isGeneratingInsights };
 
     const screenKey = currentUser ? 'dashboard' : authScreen;
 

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { createChatSession, extractPaymentDetailsFromImage, analyzeSpendingWithAI } from '../services/geminiService';
+// FIX: Replaced the non-existent `analyzeSpendingWithAI` with `generateFinancialInsights` to correctly fetch financial analysis data.
+import { createChatSession, extractPaymentDetailsFromImage, generateFinancialInsights } from '../services/geminiService';
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
 import { SparklesIcon, MicrophoneIcon, SendIcon, CameraIcon } from './icons';
 import { Chat } from '@google/genai';
@@ -213,7 +214,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                 resultForModel = result;
             } else if (call.name === 'getSpendingAnalysis') {
                 const allUserTransactions = [ ...transactions, ...currentUser.cards.flatMap(c => c.transactions) ];
-                const analysisResult = await analyzeSpendingWithAI(allUserTransactions, language);
+                // FIX: Called `generateFinancialInsights` and extracted the `spendingAnalysis` data, as `analyzeSpendingWithAI` is not an exported function.
+                const insights = await generateFinancialInsights(allUserTransactions, currentUser.balance, language);
+                const analysisResult = insights?.spendingAnalysis ?? [];
 
                 if (analysisResult.length === 0) {
                      resultMessage = "You have no spending data to analyze for this period.";
