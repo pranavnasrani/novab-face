@@ -1,6 +1,8 @@
-import firebase from 'firebase/app';
-import 'firebase/auth';
-import 'firebase/firestore';
+
+// FIX: Use Firebase v9 compat libraries to enable v8 syntax. This resolves type errors where properties like 'apps', 'auth', and 'firestore' were not found on the core 'firebase' import.
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -15,7 +17,6 @@ const firebaseConfig = {
 
 
 // Initialize Firebase
-// FIX: Switched to Firebase v8 syntax to match the project's likely dependency version, resolving module export errors.
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }

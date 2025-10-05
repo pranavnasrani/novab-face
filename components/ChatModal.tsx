@@ -7,7 +7,6 @@ import { SparklesIcon, SendIcon, CameraIcon, MicrophoneIcon, StopCircleIcon } fr
 import { Chat } from '@google/genai';
 import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
 
 // FIX: Add type declarations for the SpeechRecognition API, which is not yet a standard part of TypeScript's DOM typings. This resolves compilation errors related to voice input.
 interface SpeechRecognition {
@@ -79,9 +78,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     const fetchUsers = async () => {
         if (isOpen && currentUser) {
             setContactsLoaded(false);
-            const usersRef = collection(db, "users");
-            const q = query(usersRef, where("uid", "!=", currentUser.uid));
-            const querySnapshot = await getDocs(q);
+            const usersRef = db.collection("users");
+            const q = usersRef.where("uid", "!=", currentUser.uid);
+            const querySnapshot = await q.get();
             const userNames = querySnapshot.docs.map(doc => doc.data().name);
             setContacts(userNames);
             setContactsLoaded(true);

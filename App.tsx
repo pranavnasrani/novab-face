@@ -137,7 +137,8 @@ export default function App() {
                 cardsQuery.get(),
                 loansQuery.get(),
                 passkeysQuery.get(),
-                transactionDocs.get(),
+                // FIX: Corrected a "used before declaration" error by using the `transactionsQuery` object instead of `transactionDocs`.
+                transactionsQuery.get(),
             ]);
 
             const cards = cardDocs.docs.map(d => d.data() as Card);
