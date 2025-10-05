@@ -78,7 +78,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
           transition={{ duration: 0.7, ease: 'easeOut' }}
           className="w-full max-w-sm"
         >
-          <button onClick={onBack} aria-label={t('goBack')} className="absolute top-16 left-6 text-slate-300 hover:text-white transition-colors">
+          <button onClick={onBack} className="absolute top-16 left-6 text-slate-300 hover:text-white transition-colors">
               <ChevronLeftIcon className="w-6 h-6" />
           </button>
           <div className="text-center mb-8">
@@ -101,11 +101,11 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
           >
             <form onSubmit={handleRegister} className="space-y-5">
               <h2 className="text-2xl font-bold text-center mb-2 text-white">{t('createAccount')}</h2>
-              <InputField icon={<UserIcon />} type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('fullNamePlaceholder')} disabled={isSubmitting} aria-label={t('fullName')} />
-              <InputField icon={<UserIcon />} type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('usernamePlaceholder')} disabled={isSubmitting} aria-label={t('username')} />
-              <InputField icon={<MailIcon />} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('emailPlaceholder')} disabled={isSubmitting} aria-label={t('email')} />
-              <InputField icon={<PhoneIcon />} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('phonePlaceholder')} disabled={isSubmitting} aria-label={t('phone')} />
-              <InputField icon={<LockIcon />} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('password')} disabled={isSubmitting} aria-label={t('password')} />
+              <InputField icon={<UserIcon />} type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('fullNamePlaceholder')} disabled={isSubmitting} />
+              <InputField icon={<UserIcon />} type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('usernamePlaceholder')} disabled={isSubmitting} />
+              <InputField icon={<MailIcon />} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('emailPlaceholder')} disabled={isSubmitting} />
+              <InputField icon={<PhoneIcon />} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('phonePlaceholder')} disabled={isSubmitting} />
+              <InputField icon={<LockIcon />} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('password')} disabled={isSubmitting} />
               
               {isPasskeySupported && (
                  <div className="flex items-center justify-center gap-3 !mt-6 text-slate-300">
