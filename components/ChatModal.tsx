@@ -1,10 +1,12 @@
 
+
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights } from '../services/geminiService';
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
 import { SparklesIcon, MicrophoneIcon, SendIcon, CameraIcon, XCircleIcon } from './icons';
-import { Chat, LiveServerMessage, Modality, Blob as GenAI_Blob, LiveSession } from '@google/genai';
+// FIX: The `LiveSession` type is not publicly exported from the `@google/genai` package.
+import { Chat, LiveServerMessage, Modality, Blob as GenAI_Blob } from '@google/genai';
 import { Transaction, Card, Loan, User } from '../types';
 import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/firebase';
@@ -101,7 +103,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const [isVoiceModeActive, setIsVoiceModeActive] = useState(false);
   const [voiceConnectionState, setVoiceConnectionState] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
   const [liveTranscript, setLiveTranscript] = useState({ user: '', model: '' });
-  const sessionPromiseRef = useRef<Promise<LiveSession> | null>(null);
+  // FIX: The `LiveSession` type is not publicly exported from the `@google/genai` package. Using `any` as a fallback to resolve the type error.
+  const sessionPromiseRef = useRef<Promise<any> | null>(null);
   
   // Audio Refs
   const inputAudioContextRef = useRef<AudioContext | null>(null);
@@ -158,11 +161,20 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   }, [isVoiceModeActive]);
 
 
-  const handleFunctionCall = async (call: { name: string, args: any }): Promise<{ success: boolean; message: string; resultForModel: object }> => {
+  // FIX: Updated the function to accept an optional `args` property to handle `FunctionCall` objects from live sessions that may not include arguments, resolving a TypeScript error.
+  const handleFunctionCall = async (call: { name?: string, args?: any }): Promise<{ success: boolean; message: string; resultForModel: object }> => {
+      // FIX: The 'name' property on a FunctionCall from a live session can be optional.
+      // We must check for its existence before processing to prevent runtime errors and satisfy TypeScript.
+      if (!call.name) {
+          const message = "Tool call received without a function name.";
+          return { success: false, message, resultForModel: { success: false, error: message } };
+      }
       let resultMessage = "An unknown function was called.";
       let resultForModel: object = { success: false, message: 'Function not found' };
 
       if (!currentUser) return { success: false, message: "User not logged in.", resultForModel: { success: false, message: "User not logged in."} };
+
+      const args = call.args || {};
 
       const findCard = (last4?: string) => {
           if (!last4) return currentUser.cards[0];
@@ -170,13 +182,13 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       }
 
       if (call.name === 'initiatePayment') {
-          const { recipientName, recipientAccountNumber, recipientEmail, recipientPhone, amount } = call.args;
+          const { recipientName, recipientAccountNumber, recipientEmail, recipientPhone, amount } = args;
           const recipientIdentifier = (recipientAccountNumber || recipientEmail || recipientPhone || recipientName) as string;
           const result = await transferMoney(recipientIdentifier, amount as number);
           resultMessage = result.message;
           resultForModel = result;
       } else if (call.name === 'getCardStatementDetails') {
-          const card = findCard(call.args.cardLast4 as string);
+          const card = findCard(args.cardLast4 as string);
           if (card) {
               resultMessage = `Your ${card.cardType} ending in ${card.cardNumber.slice(-4)} has a statement balance of ${formatCurrency(card.statementBalance)}. The minimum payment is ${formatCurrency(card.minimumPayment)}, due on ${formatDate(card.paymentDueDate)}.`;
               resultForModel = { ...card, transactions: undefined };
@@ -185,8 +197,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
               resultForModel = { success: false, message: resultMessage };
           }
       } else if (call.name === 'getCardTransactions') {
-          const card = findCard(call.args.cardLast4 as string);
-          const limit = (call.args.limit as number) || 5;
+          const card = findCard(args.cardLast4 as string);
+          const limit = (args.limit as number) || 5;
           if (card) {
               const recentTxs = card.transactions.slice(0, limit);
               const txSummary = recentTxs.map(tx => `- ${tx.description}: ${formatCurrency(tx.amount)} on ${formatDate(tx.timestamp)}`).join('\n');
@@ -203,7 +215,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
           resultMessage = `Here's your balance summary:\n- Savings: ${formatCurrency(savingsBalance)}\n- Total Card Debt: ${formatCurrency(totalCardBalance)}\n- Total Loan Debt: ${formatCurrency(totalLoanBalance)}`;
           resultForModel = { success: true, savingsBalance, totalCardBalance, totalLoanBalance };
       } else if (call.name === 'getAccountTransactions') {
-          const limit = (call.args.limit as number) || 5;
+          const limit = (args.limit as number) || 5;
           const userTransactions = transactions.slice(0, limit);
           if (userTransactions.length > 0) {
               const txSummary = userTransactions.map(tx => `- ${tx.type === 'credit' ? '+' : '-'}${formatCurrency(tx.amount)} for "${tx.description}" on ${formatDate(tx.timestamp)}`).join('\n');
@@ -214,22 +226,22 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
               resultForModel = { success: true, transactions: [] };
           }
       } else if (call.name === 'makeAccountPayment') {
-          const { accountId, accountType, paymentType, amount } = call.args;
+          const { accountId, accountType, paymentType, amount } = args;
           const result = await makeAccountPayment(accountId as string, accountType as 'card' | 'loan', paymentType as 'minimum' | 'statement' | 'full' | 'custom', amount as number | undefined);
           resultMessage = result.message;
           resultForModel = result;
       } else if (call.name === 'requestPaymentExtension') {
-          const { accountId, accountType } = call.args;
+          const { accountId, accountType } = args;
           const result = await requestPaymentExtension(accountId as string, accountType as 'card' | 'loan');
           resultMessage = result.message;
           resultForModel = result;
       } else if (call.name === 'applyForCreditCard') {
-          const applicationDetailsFromAI = call.args.applicationDetails as Omit<CardApplicationDetails, 'fullName'>;
+          const applicationDetailsFromAI = args.applicationDetails as Omit<CardApplicationDetails, 'fullName'>;
           const result = await addCardToUser({ ...applicationDetailsFromAI, fullName: currentUser.name });
           resultMessage = result.message;
           resultForModel = result;
       } else if (call.name === 'applyForLoan') {
-          const applicationDetailsFromAI = call.args.applicationDetails as Omit<LoanApplicationDetails, 'fullName'>;
+          const applicationDetailsFromAI = args.applicationDetails as Omit<LoanApplicationDetails, 'fullName'>;
           const loanDetails = { ...applicationDetailsFromAI, fullName: currentUser.name };
           const result = await addLoanToUser(loanDetails);
           resultMessage = result.message;
@@ -454,7 +466,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                         for (const call of message.toolCall.functionCalls) {
                             const sensitiveActions = ['initiatePayment', 'makeAccountPayment', 'applyForCreditCard', 'applyForLoan', 'requestPaymentExtension'];
                             let verified = true;
-                            if (sensitiveActions.includes(call.name)) {
+                            if (call.name && sensitiveActions.includes(call.name)) {
                                 setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: t('passkeyConfirmationRequired', { action: call.name }) }]);
                                 verified = await verifyCurrentUserWithPasskey();
                                 if (!verified) {
@@ -510,6 +522,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
           });
       } catch (error) {
           console.error("Failed to start voice session:", error);
+          let errorMessage = t('voiceError');
+          if (error instanceof Error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError')) {
+              errorMessage = t('micAccessDenied');
+          }
+          setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: errorMessage }]);
           setVoiceConnectionState('error');
           stopVoiceSession();
       }
@@ -657,10 +674,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
             
             <div className="flex-shrink-0 p-4 border-t border-slate-800 bg-slate-950 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               {isVoiceModeActive ? (
-                <div className="flex items-center justify-between h-[52px] px-2">
-                  <div className="flex flex-col">
-                      <p className="text-slate-200 font-medium text-sm">{getVoiceModePlaceholder()}</p>
-                      <p className="text-indigo-300 text-xs h-4 truncate">{liveTranscript.user || ' '}</p>
+                <div className="flex items-center justify-between min-h-[52px] px-2">
+                  <div className="flex flex-col flex-grow overflow-hidden pr-2">
+                      <p className="text-slate-200 font-medium text-sm whitespace-normal break-words">{getVoiceModePlaceholder()}</p>
                   </div>
                   <button onClick={stopVoiceSession} className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors">
                       <XCircleIcon className="w-6 h-6" />
