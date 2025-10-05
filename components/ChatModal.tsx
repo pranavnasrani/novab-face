@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights, ai } from '../services/geminiService';
@@ -75,18 +76,6 @@ async function decodeAudioData(
   return buffer;
 }
 
-function createBlob(data: Float32Array): Blob {
-  const l = data.length;
-  const int16 = new Int16Array(l);
-  for (let i = 0; i < l; i++) {
-    int16[i] = data[i] * 32768;
-  }
-  return {
-    data: encode(new Uint8Array(int16.buffer)),
-    mimeType: 'audio/pcm;rate=16000',
-  };
-}
-
 
 export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const { currentUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey, showToast } = useContext(BankContext);
@@ -114,8 +103,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const inputAudioContext = useRef<AudioContext | null>(null);
   const outputAudioContext = useRef<AudioContext | null>(null);
   const mediaStream = useRef<MediaStream | null>(null);
-  const scriptProcessor = useRef<ScriptProcessorNode | null>(null);
-  // FIX: `MediaStreamSource` is not a valid type. It has been corrected to `MediaStreamAudioSourceNode`, which is the correct type for a media stream source in the Web Audio API.
+  const audioWorkletNode = useRef<AudioWorkletNode | null>(null);
   const mediaStreamSource = useRef<MediaStreamAudioSourceNode | null>(null);
   const nextStartTime = useRef(0);
   const audioSources = useRef(new Set<AudioBufferSourceNode>());
@@ -443,15 +431,17 @@ Respond concisely and naturally, as you are speaking. All function calling capab
     mediaStream.current?.getTracks().forEach(track => track.stop());
     mediaStream.current = null;
     
+    audioWorkletNode.current?.port.close();
+    audioWorkletNode.current?.disconnect();
+    audioWorkletNode.current = null;
+    
+    mediaStreamSource.current?.disconnect();
+    mediaStreamSource.current = null;
+    
     inputAudioContext.current?.close();
     outputAudioContext.current?.close();
     inputAudioContext.current = null;
     outputAudioContext.current = null;
-
-    scriptProcessor.current?.disconnect();
-    mediaStreamSource.current?.disconnect();
-    scriptProcessor.current = null;
-    mediaStreamSource.current = null;
 
     nextStartTime.current = 0;
     audioSources.current.forEach(s => s.stop());
@@ -479,43 +469,41 @@ Respond concisely and naturally, as you are speaking. All function calling capab
     inputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
     outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
 
-    // Explicitly resume AudioContexts. This can be necessary in some browser environments
-    // where contexts start in a 'suspended' state and need user interaction to start.
-    if (inputAudioContext.current.state === 'suspended') {
-        inputAudioContext.current.resume();
-    }
-    if (outputAudioContext.current.state === 'suspended') {
-        outputAudioContext.current.resume();
+    try {
+        await inputAudioContext.current.audioWorklet.addModule('audio-processor.js');
+    } catch (e) {
+        console.error('Failed to load audio worklet module', e);
+        showToast(t('voiceError'), 'error');
+        stopVoiceMode();
+        return;
     }
     
     nextStartTime.current = 0;
     audioSources.current = new Set();
     
     sessionPromise.current = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        model: 'gemini-live-2.5-flash-preview',
         callbacks: {
             onopen: () => {
                 setVoiceState('listening');
                 if (!inputAudioContext.current || !mediaStream.current) return;
-                mediaStreamSource.current = inputAudioContext.current.createMediaStreamSource(mediaStream.current);
-                scriptProcessor.current = inputAudioContext.current.createScriptProcessor(4096, 1, 1);
                 
-                // Create a GainNode to mute the microphone input and prevent feedback.
-                // Connecting the audio graph to the destination via a muted GainNode is a
-                // standard practice to keep the AudioContext active.
-                const muteNode = inputAudioContext.current.createGain();
-                muteNode.gain.value = 0;
+                mediaStreamSource.current = inputAudioContext.current.createMediaStreamSource(mediaStream.current);
+                audioWorkletNode.current = new AudioWorkletNode(inputAudioContext.current, 'audio-processor');
 
-                scriptProcessor.current.onaudioprocess = (audioProcessingEvent) => {
-                    const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                    const pcmBlob = createBlob(inputData);
+                audioWorkletNode.current.port.onmessage = (event) => {
+                    const pcmBuffer = event.data as ArrayBuffer;
+                    const pcmBlob: Blob = {
+                        data: encode(new Uint8Array(pcmBuffer)),
+                        mimeType: `audio/pcm;rate=${inputAudioContext.current?.sampleRate || 16000}`,
+                    };
                     sessionPromise.current?.then((session) => {
                         session.sendRealtimeInput({ media: pcmBlob });
                     });
                 };
-                mediaStreamSource.current.connect(scriptProcessor.current);
-                scriptProcessor.current.connect(muteNode);
-                muteNode.connect(inputAudioContext.current.destination);
+
+                mediaStreamSource.current.connect(audioWorkletNode.current);
+                audioWorkletNode.current.connect(inputAudioContext.current.destination);
             },
             onmessage: async (message: LiveServerMessage) => {
                 if (message.serverContent?.inputTranscription) {
