@@ -140,6 +140,13 @@ const translations = {
     aiAnalyzingSubscriptions: "AI is analyzing your transactions for recurring payments...",
     noSubscriptionsFound: "No recurring subscriptions found in your recent transactions.",
     monthly: "monthly",
+    spendingBreakdown: "Spending Breakdown",
+    spendingTrends: "Spending Trends",
+    cashFlowForecast: "Cash Flow Forecast",
+    savingOpportunities: "Saving Opportunities",
+    spendingVsLastMonth: "Overall spending vs. last month",
+    notEnoughData: "Not Enough Data",
+    notEnoughDataDescription: "Use your account for a few more transactions and check back for your personalized insights.",
   },
   es: {
     // Welcome/Onboarding
@@ -280,6 +287,13 @@ const translations = {
     aiAnalyzingSubscriptions: "La IA está analizando tus transacciones en busca de pagos recurrentes...",
     noSubscriptionsFound: "No se encontraron suscripciones recurrentes en tus transacciones recientes.",
     monthly: "mensual",
+    spendingBreakdown: "Desglose de Gastos",
+    spendingTrends: "Tendencias de Gasto",
+    cashFlowForecast: "Pronóstico de Flujo de Caja",
+    savingOpportunities: "Oportunidades de Ahorro",
+    spendingVsLastMonth: "Gasto total vs. el mes pasado",
+    notEnoughData: "No Hay Datos Suficientes",
+    notEnoughDataDescription: "Usa tu cuenta para algunas transacciones más y vuelve a consultar tus análisis personalizados.",
   },
   th: {
     // Welcome/Onboarding
@@ -411,6 +425,13 @@ const translations = {
     aiAnalyzingSubscriptions: "AI กำลังวิเคราะห์ธุรกรรมของคุณเพื่อหาการชำระเงินที่เกิดขึ้นประจำ...",
     noSubscriptionsFound: "ไม่พบการสมัครสมาชิกที่เกิดขึ้นประจำในธุรกรรมล่าสุดของคุณ",
     monthly: "รายเดือน",
+    spendingBreakdown: "การแบ่งประเภทค่าใช้จ่าย",
+    spendingTrends: "แนวโน้มการใช้จ่าย",
+    cashFlowForecast: "พยากรณ์กระแสเงินสด",
+    savingOpportunities: "โอกาสในการออม",
+    spendingVsLastMonth: "การใช้จ่ายทั้งหมดเทียบกับเดือนที่แล้ว",
+    notEnoughData: "ข้อมูลไม่เพียงพอ",
+    notEnoughDataDescription: "ใช้บัญชีของคุณสำหรับธุรกรรมเพิ่มเติมอีกเล็กน้อย แล้วกลับมาตรวจสอบข้อมูลเชิงลึกส่วนบุคคลของคุณ",
   },
   tl: {
     // Welcome/Onboarding
@@ -542,6 +563,13 @@ const translations = {
     aiAnalyzingSubscriptions: "Sinusuri ng AI ang iyong mga transaksyon para sa mga umuulit na pagbabayad...",
     noSubscriptionsFound: "Walang nakitang umuulit na subscription sa iyong mga kamakailang transaksyon.",
     monthly: "buwanan",
+    spendingBreakdown: "Breakdown ng Gastusin",
+    spendingTrends: "Mga Trend sa Paggasta",
+    cashFlowForecast: "Pagtataya ng Cash Flow",
+    savingOpportunities: "Mga Oportunidad sa Pag-iimpok",
+    spendingVsLastMonth: "Kabuuang gastusin vs. nakaraang buwan",
+    notEnoughData: "Hindi Sapat ang Datos",
+    notEnoughDataDescription: "Gamitin ang iyong account para sa ilang higit pang mga transaksyon at bumalik para sa iyong personalized na mga insight.",
   }
 };
 

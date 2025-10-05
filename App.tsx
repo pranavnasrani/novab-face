@@ -1,6 +1,6 @@
 import React, { useState, createContext, useEffect } from 'react';
 import { generateMockCard, generateMockLoan, generateAccountNumber } from './constants';
-import { User, Transaction, Card, Loan } from './types';
+import { User, Transaction, Card, Loan, InsightsData } from './types';
 import { LoginScreen } from './components/LoginScreen';
 import { Dashboard } from './components/Dashboard';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -10,6 +10,8 @@ import { CheckCircleIcon, XCircleIcon } from './components/icons';
 import { auth, db } from './services/firebase';
 import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, addDoc, runTransaction, updateDoc, deleteDoc, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { getComprehensiveInsights } from './services/geminiService';
+import { useTranslation } from './hooks/useTranslation';
 
 
 const base64url = {
@@ -93,6 +95,9 @@ interface BankContextType {
     loginWithPasskey: () => Promise<boolean>;
     removePasskey: (passkeyId: string) => Promise<void>;
     verifyCurrentUserWithPasskey: () => Promise<boolean>;
+    insightsData: InsightsData | null;
+    fetchInsights: () => Promise<void>;
+    isInsightsLoading: boolean;
 }
 
 export const BankContext = createContext<BankContextType>(null!);
@@ -102,6 +107,7 @@ type AuthScreen = 'welcome' | 'login' | 'register';
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
 export default function App() {
+    const { language } = useTranslation();
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [authScreen, setAuthScreen] = useState<AuthScreen>('welcome');
@@ -109,6 +115,8 @@ export default function App() {
     const [isPasskeySupported, setIsPasskeySupported] = useState(false);
     const [passkeys, setPasskeys] = useState<Passkey[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [insightsData, setInsightsData] = useState<InsightsData | null>(null);
+    const [isInsightsLoading, setIsInsightsLoading] = useState(false);
     
     const loadUserAndData = async (uid: string) => {
         const userDocRef = doc(db, "users", uid);
@@ -120,7 +128,7 @@ export default function App() {
             const cardsQuery = query(collection(db, `users/${uid}/cards`));
             const loansQuery = query(collection(db, `users/${uid}/loans`));
             const passkeysQuery = query(collection(db, `users/${uid}/passkeys`));
-            const transactionsQuery = query(collection(db, "transactions"), where("uid", "==", uid), orderBy("timestamp", "desc"), firestoreLimit(20));
+            const transactionsQuery = query(collection(db, "transactions"), where("uid", "==", uid), orderBy("timestamp", "desc"), firestoreLimit(50));
 
             const [cardDocs, loanDocs, passkeyDocs, transactionDocs] = await Promise.all([
                 getDocs(cardsQuery),
@@ -149,6 +157,7 @@ export default function App() {
 
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setIsLoading(true);
+            setInsightsData(null); // Reset insights on auth change
             if (firebaseUser) {
                 await loadUserAndData(firebaseUser.uid);
             } else {
@@ -168,6 +177,30 @@ export default function App() {
             setToast(null);
         }, 4000);
     };
+    
+    const fetchInsights = async () => {
+        if (insightsData || isInsightsLoading || !currentUser) return;
+        setIsInsightsLoading(true);
+        try {
+            const allUserTransactions = [
+                ...transactions.filter(tx => tx.uid === currentUser.uid),
+                ...currentUser.cards.flatMap(c => c.transactions)
+            ];
+            
+            const sixtyDaysAgo = new Date();
+            sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+            const recentTransactions = allUserTransactions.filter(tx => new Date(tx.timestamp) >= sixtyDaysAgo);
+            
+            const result = await getComprehensiveInsights(recentTransactions, language);
+            setInsightsData(result);
+        } catch (error) {
+            console.error("Failed to fetch insights:", error);
+            showToast("Could not load AI insights.", 'error');
+        } finally {
+            setIsInsightsLoading(false);
+        }
+    };
+
 
     const login = async (username: string, password: string): Promise<boolean> => {
         const usersRef = collection(db, "users");
@@ -549,7 +582,7 @@ export default function App() {
         showToast("Passkey removed.", 'success');
     };
 
-    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey };
+    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, fetchInsights, isInsightsLoading };
 
     const screenKey = currentUser ? 'dashboard' : authScreen;
 

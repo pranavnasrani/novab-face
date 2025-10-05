@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { createChatSession, extractPaymentDetailsFromImage, analyzeSpendingWithAI } from '../services/geminiService';
+// FIX: Replaced `analyzeSpendingWithAI` with the exported `getComprehensiveInsights` function.
+import { createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights } from '../services/geminiService';
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
 import { SparklesIcon, MicrophoneIcon, SendIcon, CameraIcon } from './icons';
 import { Chat } from '@google/genai';
@@ -213,12 +214,14 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                 resultForModel = result;
             } else if (call.name === 'getSpendingAnalysis') {
                 const allUserTransactions = [ ...transactions, ...currentUser.cards.flatMap(c => c.transactions) ];
-                const analysisResult = await analyzeSpendingWithAI(allUserTransactions, language);
+                // FIX: Updated to use `getComprehensiveInsights` and handle its returned object structure.
+                const analysisResultObject = await getComprehensiveInsights(allUserTransactions, language);
 
-                if (analysisResult.length === 0) {
+                if (!analysisResultObject || analysisResultObject.spendingBreakdown.length === 0) {
                      resultMessage = "You have no spending data to analyze for this period.";
                      resultForModel = { total: 0, breakdown: [] };
                 } else {
+                    const analysisResult = analysisResultObject.spendingBreakdown;
                     const total = analysisResult.reduce((sum, item) => sum + item.value, 0);
                     resultMessage = `Based on my analysis, you've spent a total of ${formatCurrency(total)} recently. Here's the breakdown:\n` +
                         analysisResult.map(item => `- ${item.name}: ${formatCurrency(item.value)}`).join('\n');

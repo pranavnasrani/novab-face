@@ -1,7 +1,8 @@
 
 
+
 import { GoogleGenAI, FunctionDeclaration, Type, Chat, GenerateContentResponse } from '@google/genai';
-import { Transaction, Card, Loan } from '../types';
+import { Transaction, Card, Loan, InsightsData } from '../types';
 
 // FIX: Added a fallback of an empty string to prevent a crash if the API key is not defined.
 const API_KEY = process.env.API_KEY || '';
@@ -336,7 +337,7 @@ Return the information as a JSON object. If any piece of information is unclear 
     }
 };
 
-export const analyzeSpendingWithAI = async (transactions: Transaction[], language: 'en' | 'es' | 'th' | 'tl'): Promise<{ name: string; value: number }[]> => {
+export const getComprehensiveInsights = async (transactions: Transaction[], language: 'en' | 'es' | 'th' | 'tl'): Promise<InsightsData | null> => {
     const langNameMap = {
         en: 'English',
         es: 'Spanish',
@@ -344,92 +345,70 @@ export const analyzeSpendingWithAI = async (transactions: Transaction[], languag
         tl: 'Tagalog'
     };
     const languageName = langNameMap[language];
-
-    const expenseTransactions = transactions
-        .filter(tx => tx.type === 'debit')
-        .map(tx => `- ${tx.description}: $${tx.amount.toFixed(2)} on ${new Date(tx.timestamp).toLocaleDateString()}`)
-        .join('\n');
     
-    if (!expenseTransactions) {
-        return [];
+    // Ensure there are enough transactions to analyze
+    if (transactions.filter(tx => tx.type === 'debit').length < 3) {
+        return null;
     }
 
-    const prompt = `Analyze the following list of financial transactions. Group them into meaningful spending categories (e.g., 'Food & Dining', 'Transport', 'Shopping', 'Bills & Utilities', 'Entertainment', 'Groceries', 'Transfers', 'Other'). Sum the total amount for each category.
+    const transactionList = transactions
+        .map(tx => `${tx.type === 'credit' ? 'IN' : 'OUT'}: $${tx.amount.toFixed(2)} for "${tx.description}" on ${new Date(tx.timestamp).toLocaleDateString()}`)
+        .join('\n');
 
-Transactions:
-${expenseTransactions}
+    const prompt = `You are an expert financial analyst named Nova. The user's language is ${languageName}. Today is ${new Date().toLocaleDateString()}. 'This month' means the last 30 days from today. 'Last month' means the 30 days prior to that. All monetary values must be numbers. All text, including category names and suggestions, MUST be in ${languageName}.
 
-Return the result as a JSON array of objects. Each object must have a "name" (string) and a "value" (number) key. The "name" for each category MUST be translated into ${languageName}. Example: [{ "name": "Shopping", "value": 150.75 }, { "name": "Food & Dining", "value": 85.20 }]`;
+Here are the user's transactions for the last 60 days:
+${transactionList}
+
+Provide a complete financial analysis in a single JSON object matching the provided schema. The analysis must include:
+1.  **spendingBreakdown**: Group all 'OUT' (debit) transactions from 'this month' into meaningful categories (e.g., 'Food', 'Shopping', 'Transport'). Sum the total for each category.
+2.  **spendingTrend**: Compare total spending for 'this month' vs 'last month'. Calculate the overall percentage change. Find the top 2 categories with the biggest percentage change (positive or negative).
+3.  **subscriptions**: Identify recurring monthly subscriptions from all transactions.
+4.  **financialAdvice**: Analyze all transactions. Identify likely income from large, recurring 'IN' (credit) transactions. Based on income and spending, provide a brief, one-sentence cash flow forecast for the next 30 days. Also, provide two actionable saving opportunity suggestions with estimated monthly savings.`;
 
     const responseSchema = {
-        type: Type.ARRAY,
-        items: {
-            type: Type.OBJECT,
-            properties: {
-                name: { type: Type.STRING },
-                value: { type: Type.NUMBER },
+        type: Type.OBJECT,
+        properties: {
+            spendingBreakdown: {
+                type: Type.ARRAY,
+                description: 'Categorical breakdown of spending in the last 30 days.',
+                items: {
+                    type: Type.OBJECT,
+                    properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER } },
+                    required: ['name', 'value']
+                }
             },
-            required: ['name', 'value'],
-        },
-    };
-
-    try {
-        // FIX: Replaced the deprecated API with `ai.models.generateContent`, using the recommended `gemini-2.5-flash` model and a structured JSON response schema.
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: responseSchema
-            }
-        });
-
-        // FIX: Updated response handling to use the `.text` property instead of the deprecated `.text()` method.
-        const jsonString = response.text.trim();
-        return JSON.parse(jsonString);
-    } catch (error) {
-        console.error("Error analyzing spending with AI:", error);
-        return [];
-    }
-};
-
-export const identifySubscriptions = async (transactions: Transaction[], language: 'en' | 'es' | 'th' | 'tl'): Promise<{ name: string; amount: number; }[]> => {
-    const langNameMap = {
-        en: 'English',
-        es: 'Spanish',
-        th: 'Thai',
-        tl: 'Tagalog'
-    };
-    const languageName = langNameMap[language];
-
-    const expenseTransactions = transactions
-        .filter(tx => tx.type === 'debit')
-        .map(tx => `- ${tx.description}: $${tx.amount.toFixed(2)} on ${new Date(tx.timestamp).toLocaleDateString()}`)
-        .join('\n');
-    
-    if (!expenseTransactions) {
-        return [];
-    }
-
-    const prompt = `Analyze the following list of financial transactions to identify recurring monthly subscriptions. Look for merchants that are typically subscription-based (e.g., Netflix, Spotify, gym memberships, software services) and payments with consistent amounts.
-
-Transactions:
-${expenseTransactions}
-
-Return the result as a JSON array of objects. Each object must have a "name" (string, the name of the merchant/service) and "amount" (number, the typical monthly cost). Do not include regular bills like utilities or one-time purchases. The "name" must be the merchant name, not a category.
-
-Example: [{ "name": "Netflix", "amount": 15.99 }, { "name": "Spotify", "amount": 9.99 }]`;
-
-    const responseSchema = {
-        type: Type.ARRAY,
-        items: {
-            type: Type.OBJECT,
-            properties: {
-                name: { type: Type.STRING },
-                amount: { type: Type.NUMBER },
+            overallSpendingChange: { type: Type.NUMBER, description: 'Overall percentage change in spending compared to the previous 30 days.' },
+            topCategoryChanges: {
+                type: Type.ARRAY,
+                description: 'Top 2 categories with the largest spending change.',
+                items: {
+                    type: Type.OBJECT,
+                    properties: { category: { type: Type.STRING }, changePercent: { type: Type.NUMBER } },
+                    required: ['category', 'changePercent']
+                }
             },
-            required: ['name', 'amount'],
+            subscriptions: {
+                type: Type.ARRAY,
+                description: 'Identified recurring monthly subscriptions.',
+                items: {
+                    type: Type.OBJECT,
+                    properties: { name: { type: Type.STRING }, amount: { type: Type.NUMBER } },
+                    required: ['name', 'amount']
+                }
+            },
+            cashFlowForecast: { type: Type.STRING, description: 'A brief, one-sentence forecast of the user\'s cash flow for the next 30 days.' },
+            savingOpportunities: {
+                type: Type.ARRAY,
+                description: 'Two actionable saving tips.',
+                items: {
+                    type: Type.OBJECT,
+                    properties: { suggestion: { type: Type.STRING }, potentialSavings: { type: Type.NUMBER } },
+                    required: ['suggestion', 'potentialSavings']
+                }
+            },
         },
+        required: ['spendingBreakdown', 'overallSpendingChange', 'topCategoryChanges', 'subscriptions', 'cashFlowForecast', 'savingOpportunities']
     };
 
     try {
@@ -445,7 +424,7 @@ Example: [{ "name": "Netflix", "amount": 15.99 }, { "name": "Spotify", "amount":
         const jsonString = response.text.trim();
         return JSON.parse(jsonString);
     } catch (error) {
-        console.error("Error identifying subscriptions with AI:", error);
-        return [];
+        console.error("Error getting comprehensive insights:", error);
+        return null;
     }
 };
