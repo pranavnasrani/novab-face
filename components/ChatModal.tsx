@@ -76,6 +76,28 @@ async function decodeAudioData(
   return buffer;
 }
 
+// Inlined AudioWorklet processor code to avoid file loading issues.
+const audioProcessorCode = `
+class AudioProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+  }
+  process(inputs) {
+    const inputChannelData = inputs[0][0];
+    if (!inputChannelData) {
+      return true;
+    }
+    const pcmData = new Int16Array(inputChannelData.length);
+    for (let i = 0; i < inputChannelData.length; i++) {
+      const s = Math.max(-1, Math.min(1, inputChannelData[i]));
+      pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    this.port.postMessage(pcmData.buffer, [pcmData.buffer]);
+    return true;
+  }
+}
+registerProcessor('audio-processor', AudioProcessor);
+`;
 
 export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const { currentUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey, showToast } = useContext(BankContext);
@@ -470,7 +492,10 @@ Respond concisely and naturally, as you are speaking. All function calling capab
     outputAudioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
 
     try {
-        await inputAudioContext.current.audioWorklet.addModule('/audio-processor.js');
+        const blob = new Blob([audioProcessorCode], { type: 'application/javascript' });
+        const objectURL = URL.createObjectURL(blob);
+        await inputAudioContext.current.audioWorklet.addModule(objectURL);
+        URL.revokeObjectURL(objectURL);
     } catch (e) {
         console.error('Failed to load audio worklet module', e);
         showToast(t('voiceError'), 'error');
