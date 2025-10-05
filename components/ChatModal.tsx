@@ -1,9 +1,8 @@
-import React, { useState, useRef, useEffect, useContext } from 'react';
+import React, { useState, useRef, useEffect, useContext, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights, ai } from '../services/geminiService';
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
 import { SparklesIcon, SendIcon, CameraIcon, MicrophoneIcon, StopCircleIcon } from './icons';
-// FIX: Removed `LiveSession` as it is not an exported member of '@google/genai'.
 import { Chat, LiveServerMessage, Modality } from '@google/genai';
 import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/firebase';
@@ -25,6 +24,8 @@ type Message = {
   sender: 'user' | 'ai' | 'system';
   text: string;
 };
+
+type VoiceState = 'idle' | 'permission' | 'connecting' | 'listening' | 'speaking' | 'processing' | 'stopping';
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -81,18 +82,12 @@ async function decodeAudioData(
   return buffer;
 }
 
-// Inlined AudioWorklet processor code. This is the most robust method as it avoids
-// potential server issues with loading an external `audio-processor.js` file.
 const audioProcessorCode = `
 class AudioProcessor extends AudioWorkletProcessor {
-  constructor() {
-    super();
-  }
+  constructor() { super(); }
   process(inputs) {
     const inputChannelData = inputs[0][0];
-    if (!inputChannelData) {
-      return true;
-    }
+    if (!inputChannelData) return true;
     const pcmData = new Int16Array(inputChannelData.length);
     for (let i = 0; i < inputChannelData.length; i++) {
       const s = Math.max(-1, Math.min(1, inputChannelData[i]));
@@ -119,15 +114,16 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const messageId = useRef(0);
   
   // Voice mode state and refs
-  const [isVoiceMode, setIsVoiceMode] = useState(false);
-  const [voiceState, setVoiceState] = useState<'idle' | 'connecting' | 'listening' | 'processing' | 'speaking'>('idle');
+  const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [liveInputTranscription, setLiveInputTranscription] = useState('');
   const [liveOutputTranscription, setLiveOutputTranscription] = useState('');
+
   const finalInputTranscription = useRef('');
   const finalOutputTranscription = useRef('');
   
-  const sessionId = useRef(0);
-  // FIX: Replaced the non-exported `LiveSession` type with an inferred type to resolve the TypeScript error.
+  const voiceStateRef = useRef(voiceState);
+  useEffect(() => { voiceStateRef.current = voiceState }, [voiceState]);
+
   const sessionRef = useRef<Awaited<ReturnType<typeof ai.live.connect>> | null>(null);
   const inputAudioContextRef = useRef<AudioContext | null>(null);
   const outputAudioContextRef = useRef<AudioContext | null>(null);
@@ -136,7 +132,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const nextStartTimeRef = useRef(0);
   const audioSourcesRef = useRef(new Set<AudioBufferSourceNode>());
-
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -161,13 +156,18 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         setMessages([{ id: messageId.current++, sender: 'ai', text: t('chatGreeting', { name: currentUser?.name.split(' ')[0] })}]);
         setInputValue('');
         setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
-    } else if (!isOpen) {
-        setChat(null);
-        if (isVoiceMode) {
-            stopVoiceMode();
-        }
     }
   }, [isOpen, currentUser, language, contacts, contactsLoaded]);
+
+  // Cleanup effect for when the modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+        if (voiceStateRef.current !== 'idle') {
+            stopVoiceMode();
+        }
+        setChat(null); // Reset text chat session as well
+    }
+  }, [isOpen]);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -435,12 +435,12 @@ Respond concisely and naturally, as you are speaking. All function calling capab
 
 6.  **Credit Card Application**:
     - If the user expresses intent to "apply for a credit card," you MUST use the 'applyForCreditCard' tool.
-    - Before calling the tool, you MUST collect all required information: address, date of birth, employment status, employer, and annual income. You already know the user's name is ${currentUser.name}, so do not ask for it.
+    - Before calling the tool, you MUST collect all required information: address, date of birth, employmentStatus, employer, and annual income. You already know the user's name is ${currentUser.name}, so do not ask for it.
     - Ask for any missing information conversationally.
 
 7.  **Loan Application**:
     - If the user wants to "apply for a loan," you MUST use the 'applyForLoan' tool.
-    - Before calling the tool, collect the desired loan amount, the loan term in months, and the other personal/financial details: address, date of birth, employment status, and annual income. You already know the user's name is ${currentUser.name}, so do not ask for it.
+    - Before calling the tool, collect the desired loan amount, the loan term in months, and the other personal/financial details: address, date of birth, employmentStatus, and annual income. You already know the user's name is ${currentUser.name}, so do not ask for it.
     - Ask for missing information conversationally.
 
 8.  **General Conversation**:
@@ -449,104 +449,110 @@ Respond concisely and naturally, as you are speaking. All function calling capab
     - VERY IMPORTANT: You MUST respond exclusively in ${langName}. Do not switch languages.`;
   };
 
-
   // Voice Mode Functions
-  const stopVoiceMode = () => {
-    // Increment session ID first to immediately invalidate any pending operations from the old session.
-    sessionId.current++;
+  const stopVoiceMode = useCallback(() => {
+    if (voiceStateRef.current === 'idle' || voiceStateRef.current === 'stopping') {
+        return;
+    }
+    setVoiceState('stopping');
     
-    setIsVoiceMode(false);
-    setVoiceState('idle');
-
-    sessionRef.current?.close();
-    sessionRef.current = null;
-    
-    // Disconnect audio graph to stop processing
-    audioWorkletNodeRef.current?.port.close();
-    audioWorkletNodeRef.current?.disconnect();
-    audioWorkletNodeRef.current = null;
-    mediaStreamSourceRef.current?.disconnect();
-    mediaStreamSourceRef.current = null;
-
-    // Stop media stream tracks
+    // 1. Tear down the audio pipeline from the source first to prevent new data.
     mediaStreamRef.current?.getTracks().forEach(track => track.stop());
-    mediaStreamRef.current = null;
+    if (mediaStreamSourceRef.current && audioWorkletNodeRef.current) {
+        mediaStreamSourceRef.current.disconnect(audioWorkletNodeRef.current);
+    }
+    if (audioWorkletNodeRef.current && inputAudioContextRef.current) {
+        audioWorkletNodeRef.current.disconnect(inputAudioContextRef.current.destination);
+    }
     
-    // Close audio contexts
+    // 2. Close the WebSocket connection.
+    sessionRef.current?.close();
+
+    // 3. Clean up remaining resources.
     inputAudioContextRef.current?.close();
     outputAudioContextRef.current?.close();
-    inputAudioContextRef.current = null;
-    outputAudioContextRef.current = null;
-
-    // Clear any pending audio playback
-    nextStartTimeRef.current = 0;
     audioSourcesRef.current.forEach(s => s.stop());
     audioSourcesRef.current.clear();
-    
-    // Reset transcriptions
+
+    // 4. Reset all refs to null.
+    mediaStreamRef.current = null;
+    mediaStreamSourceRef.current = null;
+    audioWorkletNodeRef.current = null;
+    sessionRef.current = null;
+    inputAudioContextRef.current = null;
+    outputAudioContextRef.current = null;
+    nextStartTimeRef.current = 0;
+
+    // 5. Reset UI state.
     setLiveInputTranscription('');
     setLiveOutputTranscription('');
     finalInputTranscription.current = '';
     finalOutputTranscription.current = '';
-  };
+    setVoiceState('idle');
+  }, []);
 
-  const startVoiceMode = async () => {
-    // Defensive cleanup of any lingering state from a previous, failed session.
-    stopVoiceMode();
+  const startVoiceMode = useCallback(async () => {
+    if (voiceStateRef.current !== 'idle') return;
 
-    const currentSessionId = sessionId.current;
+    setVoiceState('permission');
     
+    // 1. Get microphone permission
+    let stream;
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (sessionId.current !== currentSessionId) { stream.getTracks().forEach(t => t.stop()); return; } // Check if cancelled during permission prompt
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (voiceStateRef.current !== 'permission') { // Check if user stopped during prompt
+            stream.getTracks().forEach(t => t.stop());
+            return;
+        }
         mediaStreamRef.current = stream;
     } catch (err) {
         showToast(t('micAccessDenied'), 'error');
+        stopVoiceMode();
         return;
     }
 
-    setIsVoiceMode(true);
     setVoiceState('connecting');
-
-    inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-    outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-
+    
+    // 2. Set up audio contexts and worklet
     try {
+        inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+        outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        nextStartTimeRef.current = 0;
+        audioSourcesRef.current = new Set();
         const blob = new Blob([audioProcessorCode], { type: 'application/javascript' });
         const objectURL = URL.createObjectURL(blob);
         await inputAudioContextRef.current.audioWorklet.addModule(objectURL);
         URL.revokeObjectURL(objectURL);
     } catch (e) {
-        console.error('Failed to load audio worklet module', e);
+        console.error('Failed to set up audio contexts or worklet', e);
         showToast(t('voiceError'), 'error');
         stopVoiceMode();
         return;
     }
-    
-    nextStartTimeRef.current = 0;
-    audioSourcesRef.current = new Set();
-    
+
+    // 3. Connect to Gemini Live API
     try {
         const session = await ai.live.connect({
             model: 'gemini-2.5-flash-native-audio-preview-09-2025',
             callbacks: {
                 onopen: () => {
-                    if (sessionId.current !== currentSessionId) return;
-
+                    if (voiceStateRef.current !== 'connecting') return;
                     setVoiceState('listening');
+
+                    // Set up audio graph now that connection is open
                     if (!inputAudioContextRef.current || !mediaStreamRef.current) return;
-                    
                     mediaStreamSourceRef.current = inputAudioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
                     audioWorkletNodeRef.current = new AudioWorkletNode(inputAudioContextRef.current, 'audio-processor');
 
                     audioWorkletNodeRef.current.port.onmessage = (event) => {
-                        if (sessionId.current !== currentSessionId) return; // Stale worklet message, ignore.
+                        // CRITICAL GUARD: Only send data if we are in a state that should be sending data.
+                        if (voiceStateRef.current !== 'listening' && voiceStateRef.current !== 'speaking') return;
                         
                         if (sessionRef.current) {
                            const pcmBuffer = event.data as ArrayBuffer;
                             const pcmBlob: GeminiBlob = {
                                 data: encode(new Uint8Array(pcmBuffer)),
-                                mimeType: `audio/pcm;rate=${inputAudioContextRef.current?.sampleRate || 16000}`,
+                                mimeType: `audio/pcm;rate=16000`,
                             };
                             sessionRef.current.sendRealtimeInput({ media: pcmBlob });
                         }
@@ -556,7 +562,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                     audioWorkletNodeRef.current.connect(inputAudioContextRef.current.destination);
                 },
                 onmessage: async (message: LiveServerMessage) => {
-                    if (sessionId.current !== currentSessionId) return;
+                    if (voiceStateRef.current === 'stopping' || voiceStateRef.current === 'idle') return;
 
                     if (message.serverContent?.inputTranscription) {
                         const text = message.serverContent.inputTranscription.text;
@@ -579,7 +585,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                         source.connect(outputAudioContextRef.current.destination);
                         source.addEventListener('ended', () => {
                             audioSourcesRef.current.delete(source);
-                            if (audioSourcesRef.current.size === 0) {
+                            if (audioSourcesRef.current.size === 0 && voiceStateRef.current === 'speaking') {
                                 setVoiceState('listening');
                             }
                         });
@@ -611,7 +617,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                                 resultForModel = res;
                             }
                             
-                            if (sessionRef.current && sessionId.current === currentSessionId) {
+                            if (sessionRef.current && (voiceStateRef.current !== 'stopping' && voiceStateRef.current !== 'idle')) {
                                 sessionRef.current.sendToolResponse({
                                     functionResponses: { id: call.id, name: call.name, response: { result: resultForModel } }
                                 });
@@ -636,13 +642,13 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                 },
                 onerror: (e: ErrorEvent) => {
                     console.error('Live session error:', e);
-                    if (sessionId.current === currentSessionId) {
+                    if (voiceStateRef.current !== 'stopping' && voiceStateRef.current !== 'idle') {
                         showToast(t('voiceError'), 'error');
                         stopVoiceMode();
                     }
                 },
                 onclose: (e: CloseEvent) => {
-                    if (sessionId.current === currentSessionId) {
+                    if (voiceStateRef.current !== 'stopping' && voiceStateRef.current !== 'idle') {
                         stopVoiceMode();
                     }
                 },
@@ -657,12 +663,11 @@ Respond concisely and naturally, as you are speaking. All function calling capab
             },
         });
         
-        // Critical check: if the user cancelled while the connection was being established, close the new session and exit.
-        if (sessionId.current !== currentSessionId) {
+        if (voiceStateRef.current !== 'connecting') {
             session.close();
+            stopVoiceMode(); // Full cleanup
             return;
         }
-
         sessionRef.current = session;
 
     } catch (error) {
@@ -670,15 +675,17 @@ Respond concisely and naturally, as you are speaking. All function calling capab
          showToast(t('voiceError'), 'error');
          stopVoiceMode();
     }
-  };
+  }, [stopVoiceMode, showToast, t, getVoiceSystemInstruction, handleFunctionCall, verifyCurrentUserWithPasskey]);
 
   const toggleVoiceMode = () => {
-    if (isVoiceMode) {
-        stopVoiceMode();
-    } else {
+    if (voiceState === 'idle') {
         startVoiceMode();
+    } else {
+        stopVoiceMode();
     }
   };
+
+  const isVoiceActive = voiceState !== 'idle' && voiceState !== 'stopping';
 
   return (
     <AnimatePresence>
@@ -700,7 +707,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
             onClick={(e) => e.stopPropagation()}
           >
             <AnimatePresence>
-                {isVoiceMode && (
+                {isVoiceActive && (
                      <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -723,7 +730,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                                     boxShadow: { duration: 0.5, ease: "easeOut" }
                                 }}
                             >
-                                {voiceState === 'processing' || voiceState === 'connecting' ? (
+                                {voiceState === 'processing' || voiceState === 'connecting' || voiceState === 'permission' ? (
                                     <div className="w-24 h-24 rounded-full border-4 border-slate-700 border-t-indigo-500 animate-spin flex items-center justify-center"></div>
                                 ) : (
                                     <StopCircleIcon className="w-24 h-24 text-indigo-500" />
@@ -731,7 +738,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                             </motion.button>
                             <span className="text-slate-400 text-sm">{t('tapToStop')}</span>
                         </div>
-                        <div className="text-center h-1/3 flex flex-col justify-start">
+                        <div className="text-center h-1/3 flex flex-col justify-start pt-4">
                              <p className="text-xl text-white font-semibold min-h-[3em]">{liveOutputTranscription}</p>
                         </div>
                      </motion.div>
@@ -784,7 +791,7 @@ Respond concisely and naturally, as you are speaking. All function calling capab
                     </div>
                   </div>
                 ))}
-                {isLoading && !isVoiceMode && (
+                {isLoading && voiceState === 'idle' && (
                     <div className="flex items-end gap-2">
                         <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>
                         <div className="bg-slate-800 text-slate-200 p-3 rounded-xl">
