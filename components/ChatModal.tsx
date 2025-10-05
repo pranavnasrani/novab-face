@@ -445,10 +445,35 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                       // Tool Calls
                       if (message.toolCall) {
                         for (const call of message.toolCall.functionCalls) {
-                            const { message, resultForModel } = await handleFunctionCall(call);
+                            const sensitiveActions = ['initiatePayment', 'makeAccountPayment', 'applyForCreditCard', 'applyForLoan', 'requestPaymentExtension'];
+                            let verified = true;
+                            if (sensitiveActions.includes(call.name)) {
+                                setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: t('passkeyConfirmationRequired', { action: call.name }) }]);
+                                verified = await verifyCurrentUserWithPasskey();
+                                if (!verified) {
+                                    setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: t('actionCancelled') }]);
+                                }
+                            }
+
+                            if (!verified) {
+                                sessionPromiseRef.current?.then(session => {
+                                    session.sendToolResponse({
+                                        functionResponses: {
+                                            id: call.id,
+                                            name: call.name,
+                                            response: { success: false, message: 'User authentication failed or was cancelled.' }
+                                        }
+                                    });
+                                });
+                                continue;
+                            }
+
+                            const { message: systemMessage, resultForModel } = await handleFunctionCall(call);
+                            setMessages(prev => [...prev, { id: messageId.current++, sender: 'system', text: systemMessage }]);
+
                             sessionPromiseRef.current?.then(session => {
                                 session.sendToolResponse({
-                                    functionResponses: { id: call.id, name: call.name, response: { result: message } }
+                                    functionResponses: { id: call.id, name: call.name, response: resultForModel }
                                 });
                             });
                         }
@@ -552,7 +577,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
           <motion.div
             initial={{ y: "100%" }} animate={{ y: "0%" }} exit={{ y: "100%" }}
             transition={{ type: 'spring', damping: 30, stiffness: 220, mass: 0.9 }}
-            className="bg-slate-900 w-full h-[85vh] rounded-t-3xl flex flex-col overflow-hidden absolute bottom-0"
+            className="bg-slate-900 w-full h-[calc(100vh-env(safe-area-inset-top)-2rem)] max-h-screen rounded-t-3xl flex flex-col overflow-hidden absolute bottom-0"
             onClick={(e) => e.stopPropagation()}
           >
             <motion.div
@@ -638,30 +663,34 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                   {showImageOptions && (
                       <motion.div
                           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                          className="absolute inset-0 bg-black/50 z-10 flex items-center justify-center"
+                          className="absolute inset-0 bg-black/50 z-10 flex items-end"
                           onClick={() => setShowImageOptions(false)}
                       >
                           <motion.div
-                              initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
-                              className="bg-slate-800 rounded-2xl p-4 w-64 space-y-2"
+                              initial={{ y: "100%" }} animate={{ y: "0%" }} exit={{ y: "100%" }}
+                              transition={{ type: 'spring', damping: 30, stiffness: 250 }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="bg-slate-800 rounded-t-2xl p-4 w-full max-w-md mx-auto pb-[calc(1rem+env(safe-area-inset-bottom))]"
                           >
-                              <button onClick={() => photoInputRef.current?.click()} className="w-full text-left p-3 rounded-lg hover:bg-slate-700 text-white">{t('takePhoto')}</button>
-                              <button onClick={() => uploadInputRef.current?.click()} className="w-full text-left p-3 rounded-lg hover:bg-slate-700 text-white">{t('uploadImage')}</button>
+                              <div className="w-12 h-1.5 bg-slate-600 rounded-full mx-auto mb-4"></div>
+                              <button onClick={() => { photoInputRef.current?.click(); setShowImageOptions(false); }} className="w-full text-left p-3 rounded-lg hover:bg-slate-700 text-white text-lg">{t('takePhoto')}</button>
+                              <button onClick={() => { uploadInputRef.current?.click(); setShowImageOptions(false); }} className="w-full text-left p-3 rounded-lg hover:bg-slate-700 text-white text-lg">{t('uploadImage')}</button>
+                              <button onClick={() => setShowImageOptions(false)} className="w-full text-center p-3 mt-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-lg font-semibold">{t('close')}</button>
                           </motion.div>
                       </motion.div>
                   )}
               </AnimatePresence>
 
-               <div className="p-4 border-t border-slate-700 flex-shrink-0">
+               <div className="p-4 border-t border-slate-700 flex-shrink-0 pb-[calc(1rem+env(safe-area-inset-bottom))]">
                     <AnimatePresence mode="wait">
                     {isVoiceModeActive ? (
-                        <motion.div key="voice-view" initial={{ opacity: 0, y:10 }} animate={{ opacity: 1, y:0 }} exit={{ opacity: 0, y:10 }} className="flex flex-col items-center gap-2 h-[88px] justify-center">
+                        <motion.div key="voice-view" initial={{ opacity: 0, y:20 }} animate={{ opacity: 1, y:0 }} exit={{ opacity: 0, y:-20 }} transition={{ duration: 0.3 }} className="flex flex-col items-center gap-2 min-h-[88px] justify-center">
                             <p className="text-indigo-300 text-sm h-5">{liveTranscript.model}</p>
                             <p className="text-slate-200 font-medium h-6 text-center">{getVoiceModePlaceholder()}</p>
                             <button onClick={stopVoiceSession} className="text-sm text-slate-400 hover:text-white">{t('tapToStop')}</button>
                         </motion.div>
                     ) : (
-                        <motion.form key="text-view" initial={{ opacity: 0, y:10 }} animate={{ opacity: 1, y:0 }} exit={{ opacity: 0, y:10 }} onSubmit={handleFormSubmit} className="flex items-center gap-2">
+                        <motion.form key="text-view" initial={{ opacity: 0, y:20 }} animate={{ opacity: 1, y:0 }} exit={{ opacity: 0, y:-20 }} transition={{ duration: 0.3 }} onSubmit={handleFormSubmit} className="flex items-center gap-2">
                              <input type="file" accept="image/*" capture="environment" ref={photoInputRef} onChange={handleImageFileChange} className="hidden" />
                             <input type="file" accept="image/*" ref={uploadInputRef} onChange={handleImageFileChange} className="hidden" />
                             <motion.button type="button" onClick={() => setShowImageOptions(true)} disabled={isLoading} className="w-12 h-12 rounded-xl grid place-items-center flex-shrink-0 transition-colors duration-200 text-white bg-slate-700 hover:bg-slate-600 disabled:opacity-50">
@@ -677,7 +706,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                     <motion.button
                         onClick={toggleVoiceMode}
                         disabled={isLoading && !isVoiceModeActive}
-                        className={`w-16 h-16 rounded-full grid place-items-center flex-shrink-0 transition-all duration-300 text-white absolute right-4 bottom-24 shadow-lg ${isVoiceModeActive ? 'bg-red-500 hover:bg-red-600' : 'bg-slate-700 hover:bg-slate-600'}`}
+                        className={`w-16 h-16 rounded-full grid place-items-center flex-shrink-0 transition-all duration-300 text-white absolute right-4 shadow-lg ${isVoiceModeActive ? 'bg-red-500 hover:bg-red-600' : 'bg-slate-700 hover:bg-slate-600'} bottom-[calc(6rem+env(safe-area-inset-bottom))]`}
                         animate={{ scale: isVoiceModeActive && voiceConnectionState === 'connected' ? 1.1 : 1 }}
                         transition={{ type: 'spring', stiffness: 300, damping: 10, repeat: isVoiceModeActive ? Infinity : 0, repeatType: 'reverse' }}
                     >
