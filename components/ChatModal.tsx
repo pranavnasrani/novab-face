@@ -1,10 +1,11 @@
 
+
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights } from '../services/geminiService';
+import { createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights, getSystemInstruction, allFunctionDeclarations } from '../services/geminiService';
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
 import { SparklesIcon, SendIcon, CameraIcon, MicrophoneIcon } from './icons';
-import { Chat } from '@google/genai';
+import { Chat, LiveSession, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/firebase';
 
@@ -19,6 +20,61 @@ const fileToBase64 = (file: File): Promise<string> => {
         reader.onerror = error => reject(error);
     });
 };
+
+// --- Audio Helper Functions for Gemini Live API ---
+
+function encode(bytes: Uint8Array) {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function decode(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
+
+function createBlob(data: Float32Array): Blob {
+  const l = data.length;
+  const int16 = new Int16Array(l);
+  for (let i = 0; i < l; i++) {
+    int16[i] = data[i] * 32768;
+  }
+  return {
+    data: encode(new Uint8Array(int16.buffer)),
+    mimeType: 'audio/pcm;rate=16000',
+  };
+}
+
+// --- End Audio Helper Functions ---
+
 
 const suggestionPrompts = [
   'prompt1', 'prompt2', 'prompt3', 'prompt4'
@@ -36,7 +92,7 @@ type Message = {
 };
 
 export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
-  const { currentUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey, showToast } = useContext(BankContext);
+  const { currentUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey, showToast, ai } = useContext(BankContext);
   const { t, language } = useTranslation();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -48,101 +104,20 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const messageId = useRef(0);
   
-  // Voice mode states and refs
-  const [isVoiceModeActive, setIsVoiceModeActive] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [interimTranscript, setInterimTranscript] = useState('');
-  const [finalUserTranscript, setFinalUserTranscript] = useState('');
-  const [streamingAiResponse, setStreamingAiResponse] = useState('');
-  const [micScale, setMicScale] = useState(1);
-  const recognitionRef = useRef<any>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const microphoneStreamRef = useRef<MediaStream | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
-  const speechBuffer = useRef('');
-  const utteranceQueue = useRef<string[]>([]);
-  const isSpeakingRef = useRef(false);
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'connecting' | 'listening' | 'speaking'>('idle');
+  const sessionPromiseRef = useRef<Promise<LiveSession> | null>(null);
+  const audioResourcesRef = useRef<{
+      stream: MediaStream | null;
+      inputContext: AudioContext | null;
+      outputContext: AudioContext | null;
+      processor: ScriptProcessorNode | null;
+      sources: Set<AudioBufferSourceNode>;
+  }>({ stream: null, inputContext: null, outputContext: null, processor: null, sources: new Set() });
+  const nextStartTimeRef = useRef(0);
+  const currentInputTranscriptionRef = useRef('');
+  const currentOutputTranscriptionRef = useRef('');
 
-  const speakFromQueue = () => {
-    if (isSpeakingRef.current || utteranceQueue.current.length === 0) return;
-
-    isSpeakingRef.current = true;
-    const textToSpeak = utteranceQueue.current.shift();
-    if (!textToSpeak) {
-        isSpeakingRef.current = false;
-        return;
-    }
-
-    const utterance = new SpeechSynthesisUtterance(textToSpeak);
-    const langMap: Record<string, string> = { en: 'en-US', es: 'es-ES', th: 'th-TH', tl: 'fil-PH' };
-    utterance.lang = langMap[language] || 'en-US';
-
-    utterance.onend = () => {
-        isSpeakingRef.current = false;
-        setTimeout(speakFromQueue, 50);
-    };
-    utterance.onerror = (e) => {
-        console.error("SpeechSynthesis error", e);
-        isSpeakingRef.current = false;
-    };
-    window.speechSynthesis.speak(utterance);
-  };
-
-  const processAndSpeak = (textChunk: string, isLastChunk = false) => {
-    speechBuffer.current += textChunk;
-    const sentences = speechBuffer.current.match(/[^.?!]+[.?!]+|\S+/g) || [];
-
-    if (sentences.length > 0 && !isLastChunk) {
-        const lastSentence = sentences[sentences.length - 1];
-        if (!/[.?!]$/.test(lastSentence)) {
-            speechBuffer.current = sentences.pop() || '';
-        } else {
-            speechBuffer.current = '';
-        }
-    } else {
-        speechBuffer.current = '';
-    }
-
-    for (const sentence of sentences) {
-        if (sentence.trim()) {
-            utteranceQueue.current.push(sentence.trim());
-        }
-    }
-    speakFromQueue();
-  };
-  
-  const handleVoiceSend = async (prompt: string) => {
-    if (!prompt.trim() || !currentUser || !chat) return;
-    setIsLoading(true);
-    setStreamingAiResponse('');
-    speechBuffer.current = '';
-    utteranceQueue.current = [];
-    window.speechSynthesis.cancel();
-    isSpeakingRef.current = false;
-
-    try {
-        const responseStream = await chat.sendMessageStream({ message: prompt });
-        let fullResponseText = '';
-        for await (const chunk of responseStream) {
-            const chunkText = chunk.text;
-            if (chunkText) {
-                fullResponseText += chunkText;
-                setStreamingAiResponse(fullResponseText);
-                processAndSpeak(chunkText);
-            }
-        }
-        if (speechBuffer.current.trim()) {
-            processAndSpeak('', true);
-        }
-    } catch (error) {
-        console.error("Error during AI stream:", error);
-        setStreamingAiResponse(t('chatError'));
-    } finally {
-        setIsLoading(false);
-    }
-  };
-  
   const handleFunctionCall = async (call: { name?: string, args?: any }): Promise<{ success: boolean; message: string; resultForModel: object }> => {
       if (!call.name) {
           const message = "Tool call received without a function name.";
@@ -308,128 +283,168 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         setIsLoading(false);
     }
   };
-
-  const recognitionCleanup = () => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-    microphoneStreamRef.current?.getTracks().forEach(track => track.stop());
-    microphoneStreamRef.current = null;
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close().catch(e => console.error("Error closing AudioContext", e));
-    }
-    audioContextRef.current = null;
-    setMicScale(1);
-
-    if (recognitionRef.current) {
-      recognitionRef.current.onresult = null;
-      recognitionRef.current.onerror = null;
-      recognitionRef.current.onend = null;
-      recognitionRef.current = null;
-    }
-  };
   
-  const visualizeMicInput = () => {
-    if (!analyserRef.current) return;
-    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-    analyserRef.current.getByteTimeDomainData(dataArray);
+  const startVoiceMode = async () => {
+    if (!currentUser) return;
+    setIsVoiceMode(true);
+    setVoiceStatus('connecting');
 
-    let sumSquares = 0.0;
-    for (const amplitude of dataArray) {
-        const normalized = amplitude / 128.0 - 1.0;
-        sumSquares += normalized * normalized;
-    }
-    const rms = Math.sqrt(sumSquares / dataArray.length);
-    
-    const volume = Math.min(Math.max(rms, 0), 1);
-    const scale = 1 + volume * 1.5;
-    setMicScale(scale);
-    
-    animationFrameRef.current = requestAnimationFrame(visualizeMicInput);
-  };
-
-  const startRecording = async (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      showToast(t('micAccessDenied'), 'error');
-      return;
-    }
-    
-    window.speechSynthesis.cancel();
-    isSpeakingRef.current = false;
-    setInterimTranscript('');
-    
     try {
-      microphoneStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setIsRecording(true);
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioResourcesRef.current.stream = stream;
 
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      analyserRef.current = audioContextRef.current.createAnalyser();
-      const source = audioContextRef.current.createMediaStreamSource(microphoneStreamRef.current);
-      source.connect(analyserRef.current);
-      visualizeMicInput();
+        // FIX: Cast `window` to `any` to allow access to the non-standard `webkitAudioContext` for older Safari browser compatibility, resolving a TypeScript error.
+        const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+        const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        audioResourcesRef.current.inputContext = inputAudioContext;
+        audioResourcesRef.current.outputContext = outputAudioContext;
+        
+        const systemInstruction = getSystemInstruction(currentUser.name, contacts, language, currentUser.cards, currentUser.loans);
 
-      const recognition = new SpeechRecognition();
-      recognitionRef.current = recognition;
-      const langMap: Record<string, string> = { en: 'en-US', es: 'es-ES', th: 'th-TH', tl: 'fil-PH' };
-      recognition.lang = langMap[language] || 'en-US';
-      recognition.interimResults = true;
-      recognition.continuous = true;
+        sessionPromiseRef.current = ai.live.connect({
+            model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+            callbacks: {
+                onopen: () => {
+                    setVoiceStatus('listening');
+                    const source = inputAudioContext.createMediaStreamSource(stream);
+                    const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
+                    audioResourcesRef.current.processor = scriptProcessor;
 
-      recognition.onresult = (event: any) => {
-        let interim = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-            interim += event.results[i][0].transcript;
-        }
-        setInterimTranscript(interim);
-      };
+                    scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+                        const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                        const pcmBlob = createBlob(inputData);
+                        sessionPromiseRef.current?.then((session) => {
+                            session.sendRealtimeInput({ media: pcmBlob });
+                        });
+                    };
+                    source.connect(scriptProcessor);
+                    scriptProcessor.connect(inputAudioContext.destination);
+                },
+                onmessage: async (message: LiveServerMessage) => {
+                    // Handle Transcription
+                    if (message.serverContent?.inputTranscription) {
+                        setInputValue(currentInputTranscriptionRef.current + message.serverContent.inputTranscription.text);
+                        if(message.serverContent.inputTranscription.isFinal) {
+                            currentInputTranscriptionRef.current += message.serverContent.inputTranscription.text;
+                        }
+                    }
+                    if (message.serverContent?.outputTranscription) {
+                        currentOutputTranscriptionRef.current += message.serverContent.outputTranscription.text;
+                    }
 
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error', event.error);
-        if (event.error !== 'no-speech' && event.error !== 'aborted') {
-          showToast(t('voiceError'), 'error');
-        }
-      };
-      
-      recognition.start();
+                    // Handle Tool Calls
+                    if (message.toolCall) {
+                        for (const call of message.toolCall.functionCalls) {
+                            // No passkey check needed in voice mode for now, to keep it fluid
+                            const { resultForModel } = await handleFunctionCall(call);
+                            sessionPromiseRef.current?.then(session => {
+                                session.sendToolResponse({
+                                    functionResponses: { id: call.id, name: call.name, response: { result: resultForModel } }
+                                });
+                            });
+                        }
+                    }
+                    
+                    // Handle Audio Output
+                    const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
+                    if (base64EncodedAudioString) {
+                        setVoiceStatus('speaking');
+                        const audioBuffer = await decodeAudioData(decode(base64EncodedAudioString), outputAudioContext, 24000, 1);
+                        const source = outputAudioContext.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(outputAudioContext.destination);
+                        
+                        source.addEventListener('ended', () => {
+                            audioResourcesRef.current.sources.delete(source);
+                            if (audioResourcesRef.current.sources.size === 0) {
+                                setVoiceStatus('listening');
+                            }
+                        });
+                        
+                        const currentTime = outputAudioContext.currentTime;
+                        nextStartTimeRef.current = Math.max(nextStartTimeRef.current, currentTime);
+                        source.start(nextStartTimeRef.current);
+                        nextStartTimeRef.current += audioBuffer.duration;
+                        audioResourcesRef.current.sources.add(source);
+                    }
 
-    } catch (err) {
-      showToast(t('micAccessDenied'), 'error');
-      console.error('Mic access error', err);
-      recognitionCleanup();
+                    // Handle Turn Completion
+                    if (message.serverContent?.turnComplete) {
+                        if (currentInputTranscriptionRef.current.trim()) {
+                            setMessages(prev => [...prev, { id: messageId.current++, sender: 'user', text: currentInputTranscriptionRef.current.trim() }]);
+                        }
+                        if (currentOutputTranscriptionRef.current.trim()) {
+                             setMessages(prev => [...prev, { id: messageId.current++, sender: 'ai', text: currentOutputTranscriptionRef.current.trim() }]);
+                        }
+                        currentInputTranscriptionRef.current = '';
+                        currentOutputTranscriptionRef.current = '';
+                        setInputValue('');
+                    }
+                },
+                onerror: (e: ErrorEvent) => {
+                    console.error('Live session error:', e);
+                    showToast(t('voiceError'), 'error');
+                    stopVoiceMode();
+                },
+                onclose: (e: CloseEvent) => {
+                    stopVoiceMode();
+                },
+            },
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+                systemInstruction: systemInstruction,
+                tools: [{ functionDeclarations: allFunctionDeclarations }],
+                outputAudioTranscription: {},
+                inputAudioTranscription: {},
+            },
+        });
+
+    } catch (error) {
+        console.error("Failed to start voice mode:", error);
+        showToast(t('micAccessDenied'), 'error');
+        setIsVoiceMode(false);
+        setVoiceStatus('idle');
     }
   };
-  
-  const stopRecording = (e: React.MouseEvent | React.TouchEvent) => {
-      e.preventDefault();
-      setIsRecording(false);
-      if (recognitionRef.current) {
-          recognitionRef.current.onend = () => {
-              recognitionCleanup();
-              const finalTranscript = interimTranscript.trim();
-              if (finalTranscript) {
-                setFinalUserTranscript(prev => prev ? `${prev}\n> ${finalTranscript}` : `> ${finalTranscript}`);
-                handleVoiceSend(finalTranscript);
-              }
-              setInterimTranscript('');
-          };
-          recognitionRef.current.stop();
-      }
+
+  const stopVoiceMode = () => {
+    sessionPromiseRef.current?.then(session => session.close());
+    sessionPromiseRef.current = null;
+    
+    audioResourcesRef.current.sources.forEach(source => source.stop());
+    audioResourcesRef.current.sources.clear();
+    
+    audioResourcesRef.current.processor?.disconnect();
+    audioResourcesRef.current.inputContext?.close();
+    audioResourcesRef.current.outputContext?.close();
+    audioResourcesRef.current.stream?.getTracks().forEach(track => track.stop());
+    
+    audioResourcesRef.current = { stream: null, inputContext: null, outputContext: null, processor: null, sources: new Set() };
+    nextStartTimeRef.current = 0;
+    currentInputTranscriptionRef.current = '';
+    currentOutputTranscriptionRef.current = '';
+
+    setIsVoiceMode(false);
+    setVoiceStatus('idle');
+    setInputValue('');
   };
 
-  const closeVoiceMode = () => {
-      setIsVoiceModeActive(false);
-      recognitionCleanup();
-      window.speechSynthesis.cancel();
-      isSpeakingRef.current = false;
-      utteranceQueue.current = [];
-      setFinalUserTranscript('');
-      setStreamingAiResponse('');
-      setInterimTranscript('');
-      setIsLoading(false);
+  const toggleVoiceMode = () => {
+    if (isVoiceMode) {
+        stopVoiceMode();
+    } else {
+        startVoiceMode();
+    }
   };
+
+  useEffect(() => {
+    return () => {
+        if(isVoiceMode) {
+            stopVoiceMode();
+        }
+    }
+  }, []);
   
   useEffect(() => {
     const fetchUsers = async () => {
@@ -457,7 +472,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
     } else if (!isOpen) {
         setChat(null);
-        closeVoiceMode();
+        if (isVoiceMode) stopVoiceMode();
     }
   }, [isOpen, currentUser, language, contacts, contactsLoaded]);
   
@@ -505,6 +520,15 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       handleSend(inputValue);
   }
 
+  const getVoiceStatusText = () => {
+    switch(voiceStatus) {
+        case 'connecting': return t('connecting');
+        case 'listening': return t('speakNow');
+        case 'speaking': return '...';
+        default: return t('askNova');
+    }
+  }
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -524,44 +548,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
             className="w-full max-w-md bg-slate-950 rounded-t-3xl flex flex-col max-h-[90vh] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <AnimatePresence>
-                {isVoiceModeActive && (
-                     <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="absolute inset-0 bg-slate-950 z-20 flex flex-col items-center justify-between p-6 pb-[calc(1rem+env(safe-area-inset-bottom))]"
-                     >
-                        <header className="w-full flex justify-end">
-                            <button onClick={closeVoiceMode} className="w-8 h-8 grid place-items-center rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors text-2xl">&times;</button>
-                        </header>
-                        <div className="w-full flex flex-col gap-4 flex-grow justify-end pb-8">
-                            <div className="text-right text-lg text-slate-400 min-h-[5rem] overflow-y-auto">
-                                <p className="whitespace-pre-wrap">{finalUserTranscript}</p>
-                                <p className="text-white font-semibold">{interimTranscript}</p>
-                            </div>
-                            <div className="text-left text-xl text-indigo-300 min-h-[5rem] overflow-y-auto">
-                                <p className="whitespace-pre-wrap">{streamingAiResponse}</p>
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col items-center">
-                            <motion.button 
-                                onMouseDown={startRecording}
-                                onMouseUp={stopRecording}
-                                onTouchStart={startRecording}
-                                onTouchEnd={stopRecording}
-                                animate={{ scale: micScale }}
-                                transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-                                className="w-24 h-24 rounded-full bg-indigo-600 flex items-center justify-center my-8 shadow-2xl shadow-indigo-600/30 text-white"
-                            >
-                                <MicrophoneIcon className="w-12 h-12" />
-                            </motion.button>
-                            <span className="text-slate-400 text-sm">{isRecording ? t('listening') : t('pressToTalk')}</span>
-                        </div>
-                     </motion.div>
-                )}
-            </AnimatePresence>
             <div className="w-full flex-shrink-0 flex justify-center pt-3 pb-2 cursor-grab">
                 <div className="w-10 h-1.5 bg-slate-700 rounded-full" />
             </div>
@@ -587,6 +573,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                                       key={promptKey}
                                       onClick={() => handleSend(t(promptKey as any))}
                                       className="p-3 text-left bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-300 hover:bg-slate-800 transition-colors duration-200"
+                                      disabled={isVoiceMode}
                                   >
                                       {t(promptKey as any)}
                                   </button>
@@ -609,7 +596,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                     </div>
                   </div>
                 ))}
-                {isLoading && !isVoiceModeActive && (
+                {isLoading && !isVoiceMode && (
                     <div className="flex items-end gap-2">
                         <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>
                         <div className="bg-slate-800 text-slate-200 p-3 rounded-xl">
@@ -628,19 +615,14 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
             <div className="flex-shrink-0 p-4 border-t border-slate-800 bg-slate-950 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               <form onSubmit={handleFormSubmit} className="flex items-center gap-2">
                   <input type="file" accept="image/*" ref={photoInputRef} onChange={handleImageFileChange} className="hidden" />
-                  <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isLoading} className="w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50">
+                  <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isLoading || isVoiceMode} className="w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50">
                       <CameraIcon className="w-6 h-6" />
                   </button>
-                  <button 
-                    type="button" 
-                    onClick={() => setIsVoiceModeActive(true)}
-                    disabled={isLoading} 
-                    className="w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-all text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50"
-                  >
+                  <button type="button" onClick={toggleVoiceMode} disabled={isLoading && !isVoiceMode} className={`w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors bg-slate-800 hover:bg-slate-700 disabled:opacity-50 ${isVoiceMode ? 'text-blue-400' : 'text-slate-400'}`}>
                       <MicrophoneIcon className="w-6 h-6" />
                   </button>
-                  <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={t('askNova')} className="w-full bg-slate-800 border-transparent rounded-lg px-4 py-3 h-12 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading} />
-                  <button type="submit" disabled={isLoading || !inputValue.trim()} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-800 disabled:text-slate-500 transition-colors">
+                  <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={isVoiceMode ? getVoiceStatusText() : t('askNova')} className="w-full bg-slate-800 border-transparent rounded-lg px-4 py-3 h-12 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading || isVoiceMode} />
+                  <button type="submit" disabled={isLoading || !inputValue.trim() || isVoiceMode} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-800 disabled:text-slate-500 transition-colors">
                       <SendIcon className="w-6 h-6" />
                   </button>
               </form>
