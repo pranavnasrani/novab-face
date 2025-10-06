@@ -286,7 +286,14 @@ export default function App() {
 
     const logout = async () => {
         try {
+            // For email/password users, this triggers onAuthStateChanged which clears state.
             await auth.signOut();
+            // For passkey-only users, there's no auth state, so signOut does nothing.
+            // We manually clear all user-related state to ensure logout happens for all login methods.
+            setCurrentUser(null);
+            setTransactions([]);
+            setPasskeys([]);
+            setInsightsData(null);
             setAuthScreen('welcome');
         } catch (error) {
             console.error("Sign out error:", error);
