@@ -58,7 +58,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const microphoneStreamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const wasTriggeredByVoice = useRef(false);
-  const finalTranscriptRef = useRef('');
 
   const speakResponse = (text: string) => {
     if (!('speechSynthesis' in window)) {
@@ -264,32 +263,103 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     }
     microphoneStreamRef.current?.getTracks().forEach(track => track.stop());
     microphoneStreamRef.current = null;
-    audioContextRef.current?.close().catch(e => console.error("Error closing AudioContext", e));
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(e => console.error("Error closing AudioContext", e));
+    }
     audioContextRef.current = null;
     setMicScale(1);
 
-    // This check ensures we only process speech if the cleanup is for a recording session.
-    if (isRecording) {
-      setIsRecording(false);
-      const finalTranscript = finalTranscriptRef.current.trim();
-      if (finalTranscript) {
-        handleSend(finalTranscript);
-      } else {
-        wasTriggeredByVoice.current = false;
-      }
-    }
-
-    finalTranscriptRef.current = '';
+    setIsRecording(false);
     setInterimTranscript('');
-    recognitionRef.current = null;
+    
+    if (recognitionRef.current) {
+      recognitionRef.current.onresult = null;
+      recognitionRef.current.onerror = null;
+      recognitionRef.current.onend = null;
+      recognitionRef.current = null;
+    }
   };
   
-  const stopRecording = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop(); // This will trigger the 'onend' event for cleanup.
+  const startRecording = async () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showToast(t('micAccessDenied'), 'error');
+      return;
+    }
+    
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    setInterimTranscript('');
+    
+    try {
+      microphoneStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setIsRecording(true);
+
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      const source = audioContextRef.current.createMediaStreamSource(microphoneStreamRef.current);
+      source.connect(analyserRef.current);
+      visualizeMicInput();
+
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      const langMap: Record<string, string> = { en: 'en-US', es: 'es-ES', th: 'th-TH', tl: 'fil-PH' };
+      recognition.lang = langMap[language] || 'en-US';
+      recognition.interimResults = true;
+      recognition.continuous = false; // Orthodox implementation: stops after one utterance
+
+      let finalTranscript = '';
+
+      recognition.onresult = (event: any) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interim += event.results[i][0].transcript;
+          }
+        }
+        setInterimTranscript(interim);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error', event.error);
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          showToast(t('voiceError'), 'error');
+        }
+        // onend will fire after error, so cleanup is handled there.
+      };
+      
+      recognition.onend = () => {
+        recognitionCleanup();
+        const transcriptToSend = finalTranscript.trim();
+        if (transcriptToSend) {
+            wasTriggeredByVoice.current = true;
+            handleSend(transcriptToSend);
+        } else {
+            wasTriggeredByVoice.current = false;
+        }
+      };
+      
+      recognition.start();
+
+    } catch (err) {
+      showToast(t('micAccessDenied'), 'error');
+      console.error('Mic access error', err);
+      recognitionCleanup();
     }
   };
 
+  const toggleRecording = () => {
+    if (isRecording) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop(); // Manually stop, will trigger onend
+      }
+    } else {
+      startRecording();
+    }
+  };
+  
   useEffect(() => {
     const fetchUsers = async () => {
         if (isOpen && currentUser) {
@@ -316,12 +386,13 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
     } else if (!isOpen) {
         setChat(null);
-        if (isRecording) {
-            stopRecording();
+        if (recognitionRef.current) {
+            recognitionRef.current.abort(); // Stop without processing results
+            recognitionCleanup();
         }
         window.speechSynthesis.cancel();
     }
-  }, [isOpen, currentUser, language, contacts, contactsLoaded, isRecording]);
+  }, [isOpen, currentUser, language, contacts, contactsLoaded]);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -385,80 +456,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     setMicScale(scale);
     
     animationFrameRef.current = requestAnimationFrame(visualizeMicInput);
-  };
-
-  const startRecording = async () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      showToast(t('micAccessDenied'), 'error');
-      return;
-    }
-    
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
-    wasTriggeredByVoice.current = true;
-    finalTranscriptRef.current = '';
-    setInterimTranscript('');
-    
-    try {
-      microphoneStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setIsRecording(true);
-
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      analyserRef.current = audioContextRef.current.createAnalyser();
-      const source = audioContextRef.current.createMediaStreamSource(microphoneStreamRef.current);
-      source.connect(analyserRef.current);
-      visualizeMicInput();
-
-      const recognition = new SpeechRecognition();
-      recognitionRef.current = recognition;
-      const langMap: Record<string, string> = { en: 'en-US', es: 'es-ES', th: 'th-TH', tl: 'fil-PH' };
-      recognition.lang = langMap[language] || 'en-US';
-      recognition.interimResults = true;
-      recognition.continuous = true;
-
-      recognition.onresult = (event: any) => {
-        let interim = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscriptRef.current += event.results[i][0].transcript + ' ';
-          } else {
-            interim += event.results[i][0].transcript;
-          }
-        }
-        setInterimTranscript(interim);
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error', event.error);
-        if (event.error !== 'no-speech' && event.error !== 'aborted') {
-          showToast(t('voiceError'), 'error');
-        }
-      };
-      
-      recognition.onspeechend = () => {
-        stopRecording();
-      };
-      
-      recognition.onend = () => {
-        recognitionCleanup();
-      };
-      
-      recognition.start();
-
-    } catch (err) {
-      showToast(t('micAccessDenied'), 'error');
-      console.error('Mic access error', err);
-      setIsRecording(false); // Ensure state is reset on error
-    }
-  };
-
-  const toggleRecording = () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
   };
 
   return (
