@@ -214,9 +214,12 @@ export const getSystemInstruction = (userFullName: string, contacts: string[], l
     };
     const langName = langNameMap[language];
 
-    const contactsInstruction = contacts.length > 0
-        ? `Available contacts by name are: ${contacts.join(', ')}. If a name doesn't match, inform the user.`
-        : "There are no other users registered. If the user asks to send money to someone by name, you must inform them that no contacts were found and they should try an account number, email, or phone instead.";
+    let contactsInstruction;
+    if (contacts.length > 0) {
+        contactsInstruction = `The user can transfer money to any other user in the banking system. The 'initiatePayment' tool can find a recipient by their full name, first name, username, account number, email address, or phone number. For convenience, here is a list of registered user names: ${contacts.join(', ')}. If a user specifies a recipient by name and it is ambiguous or not found, ask for a more specific identifier. Do not hallucinate recipient details.`;
+    } else {
+        contactsInstruction = "There are no other users registered in the system. If the user asks to send money to someone, you must inform them that no recipients are available.";
+    }
 
     const activeLoans = userLoans.filter(l => l.status === 'Active');
 
@@ -239,7 +242,7 @@ Your capabilities include initiating payments, providing card information, analy
 1.  **Payments**:
     - If the user asks to "send", "pay", "transfer", or similar, you MUST use the 'initiatePayment' tool.
     - You must have a recipient and an amount. The recipient can be identified by their name, 16-digit account number, email address, or phone number. Prioritize using the account number if provided.
-    - ${contactsInstruction} Do not hallucinate contacts.
+    - ${contactsInstruction}
 
 2.  **Spending Analysis**:
     - If the user asks "how much did I spend", "what's my spending breakdown", "show my expenses", or similar, you MUST use the 'getSpendingAnalysis' tool.
