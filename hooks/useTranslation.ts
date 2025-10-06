@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useContext, ReactNode, useEffect, PropsWithChildren } from 'react';
 
 const translations = {
@@ -93,7 +94,7 @@ const translations = {
     connecting: "Connecting...",
     speakNow: "Speak now...",
     processing: "Processing...",
-    tapToStop: "Tap to stop",
+    pressToTalk: "Press and hold to speak",
     voiceError: "Could not start voice mode. Please try again.",
     micAccessDenied: "Microphone access denied. Please enable it in browser settings to use voice mode.",
     // Application Modal
@@ -252,7 +253,7 @@ const translations = {
     connecting: "Conectando...",
     speakNow: "Habla ahora...",
     processing: "Procesando...",
-    tapToStop: "Toca para detener",
+    pressToTalk: "Mantén presionado para hablar",
     voiceError: "No se pudo iniciar el modo de voz. Por favor, inténtalo de nuevo.",
     micAccessDenied: "Acceso al micrófono denegado. Habilítalo en la configuración de tu navegador para usar el modo de voz.",
     // Application Modal
@@ -404,7 +405,7 @@ const translations = {
     connecting: "กำลังเชื่อมต่อ...",
     speakNow: "พูดเลย...",
     processing: "กำลังประมวลผล...",
-    tapToStop: "แตะเพื่อหยุด",
+    pressToTalk: "กดค้างไว้เพื่อพูด",
     voiceError: "ไม่สามารถเริ่มโหมดเสียงได้ กรุณาลองใหม่",
     micAccessDenied: "การเข้าถึงไมโครโฟนถูกปฏิเสธ กรุณาเปิดใช้งานในการตั้งค่าเบราว์เซอร์เพื่อใช้โหมดเสียง",
     newApplication: "ใบสมัคร {{type}} ใหม่",
@@ -554,7 +555,7 @@ const translations = {
     connecting: "Kumokonekta...",
     speakNow: "Magsalita na...",
     processing: "Pinoproseso...",
-    tapToStop: "Pindutin para huminto",
+    pressToTalk: "Pindutin nang matagal para magsalita",
     voiceError: "Hindi masimulan ang voice mode. Pakisubukang muli.",
     micAccessDenied: "Pinagbawalan ang access sa mikropono. Paki-enable ito sa mga setting ng browser para magamit ang voice mode.",
     newApplication: "Bagong Aplikasyon para sa {{type}}",

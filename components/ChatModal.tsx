@@ -1,8 +1,9 @@
+
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights } from '../services/geminiService';
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
-import { SparklesIcon, SendIcon, CameraIcon, MicrophoneIcon, StopCircleIcon } from './icons';
+import { SparklesIcon, SendIcon, CameraIcon, MicrophoneIcon } from './icons';
 import { Chat } from '@google/genai';
 import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/firebase';
@@ -47,40 +48,101 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const messageId = useRef(0);
   
-  // Voice mode state and refs
+  // Voice mode states and refs
+  const [isVoiceModeActive, setIsVoiceModeActive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState('');
+  const [finalUserTranscript, setFinalUserTranscript] = useState('');
+  const [streamingAiResponse, setStreamingAiResponse] = useState('');
   const [micScale, setMicScale] = useState(1);
-  const recognitionRef = useRef<any>(null); // SpeechRecognition can be vendor-prefixed
+  const recognitionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const microphoneStreamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const wasTriggeredByVoice = useRef(false);
+  const speechBuffer = useRef('');
+  const utteranceQueue = useRef<string[]>([]);
+  const isSpeakingRef = useRef(false);
 
-  const speakResponse = (text: string) => {
-    if (!('speechSynthesis' in window)) {
-      console.warn('Speech Synthesis not supported');
-      wasTriggeredByVoice.current = false;
-      return;
+  const speakFromQueue = () => {
+    if (isSpeakingRef.current || utteranceQueue.current.length === 0) return;
+
+    isSpeakingRef.current = true;
+    const textToSpeak = utteranceQueue.current.shift();
+    if (!textToSpeak) {
+        isSpeakingRef.current = false;
+        return;
     }
-    const utterance = new SpeechSynthesisUtterance(text);
+
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
     const langMap: Record<string, string> = { en: 'en-US', es: 'es-ES', th: 'th-TH', tl: 'fil-PH' };
     utterance.lang = langMap[language] || 'en-US';
-    utterance.onstart = () => setIsSpeaking(true);
+
     utterance.onend = () => {
-      setIsSpeaking(false);
-      wasTriggeredByVoice.current = false;
+        isSpeakingRef.current = false;
+        setTimeout(speakFromQueue, 50);
     };
     utterance.onerror = (e) => {
-      console.error('SpeechSynthesis Error', e);
-      setIsSpeaking(false);
-      wasTriggeredByVoice.current = false;
+        console.error("SpeechSynthesis error", e);
+        isSpeakingRef.current = false;
     };
     window.speechSynthesis.speak(utterance);
   };
 
+  const processAndSpeak = (textChunk: string, isLastChunk = false) => {
+    speechBuffer.current += textChunk;
+    const sentences = speechBuffer.current.match(/[^.?!]+[.?!]+|\S+/g) || [];
+
+    if (sentences.length > 0 && !isLastChunk) {
+        const lastSentence = sentences[sentences.length - 1];
+        if (!/[.?!]$/.test(lastSentence)) {
+            speechBuffer.current = sentences.pop() || '';
+        } else {
+            speechBuffer.current = '';
+        }
+    } else {
+        speechBuffer.current = '';
+    }
+
+    for (const sentence of sentences) {
+        if (sentence.trim()) {
+            utteranceQueue.current.push(sentence.trim());
+        }
+    }
+    speakFromQueue();
+  };
+  
+  const handleVoiceSend = async (prompt: string) => {
+    if (!prompt.trim() || !currentUser || !chat) return;
+    setIsLoading(true);
+    setStreamingAiResponse('');
+    speechBuffer.current = '';
+    utteranceQueue.current = [];
+    window.speechSynthesis.cancel();
+    isSpeakingRef.current = false;
+
+    try {
+        const responseStream = await chat.sendMessageStream({ message: prompt });
+        let fullResponseText = '';
+        for await (const chunk of responseStream) {
+            const chunkText = chunk.text;
+            if (chunkText) {
+                fullResponseText += chunkText;
+                setStreamingAiResponse(fullResponseText);
+                processAndSpeak(chunkText);
+            }
+        }
+        if (speechBuffer.current.trim()) {
+            processAndSpeak('', true);
+        }
+    } catch (error) {
+        console.error("Error during AI stream:", error);
+        setStreamingAiResponse(t('chatError'));
+    } finally {
+        setIsLoading(false);
+    }
+  };
+  
   const handleFunctionCall = async (call: { name?: string, args?: any }): Promise<{ success: boolean; message: string; resultForModel: object }> => {
       if (!call.name) {
           const message = "Tool call received without a function name.";
@@ -231,26 +293,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         if (finalResponse.text) {
             const aiMessage: Message = { id: messageId.current++, sender: 'ai', text: finalResponse.text };
             setMessages(prev => [...prev, aiMessage]);
-            if (wasTriggeredByVoice.current) {
-                speakResponse(finalResponse.text);
-            }
-        } else if (wasTriggeredByVoice.current) {
-            wasTriggeredByVoice.current = false;
         }
 
       } else {
         const aiResponse: Message = { id: messageId.current++, sender: 'ai', text: response.text };
         setMessages(prev => [...prev, aiResponse]);
-        if (wasTriggeredByVoice.current) {
-            speakResponse(response.text);
-        }
       }
 
     } catch (error) {
         console.error("Error during AI chat:", error);
         const errorMessage: Message = { id: messageId.current++, sender: 'system', text: t('chatError') };
         setMessages(prev => [...prev, errorMessage]);
-        wasTriggeredByVoice.current = false;
     } finally {
         setIsLoading(false);
     }
@@ -269,9 +322,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     audioContextRef.current = null;
     setMicScale(1);
 
-    setIsRecording(false);
-    setInterimTranscript('');
-    
     if (recognitionRef.current) {
       recognitionRef.current.onresult = null;
       recognitionRef.current.onerror = null;
@@ -280,7 +330,27 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     }
   };
   
-  const startRecording = async () => {
+  const visualizeMicInput = () => {
+    if (!analyserRef.current) return;
+    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+    analyserRef.current.getByteTimeDomainData(dataArray);
+
+    let sumSquares = 0.0;
+    for (const amplitude of dataArray) {
+        const normalized = amplitude / 128.0 - 1.0;
+        sumSquares += normalized * normalized;
+    }
+    const rms = Math.sqrt(sumSquares / dataArray.length);
+    
+    const volume = Math.min(Math.max(rms, 0), 1);
+    const scale = 1 + volume * 1.5;
+    setMicScale(scale);
+    
+    animationFrameRef.current = requestAnimationFrame(visualizeMicInput);
+  };
+
+  const startRecording = async (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       showToast(t('micAccessDenied'), 'error');
@@ -288,7 +358,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     }
     
     window.speechSynthesis.cancel();
-    setIsSpeaking(false);
+    isSpeakingRef.current = false;
     setInterimTranscript('');
     
     try {
@@ -306,18 +376,12 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       const langMap: Record<string, string> = { en: 'en-US', es: 'es-ES', th: 'th-TH', tl: 'fil-PH' };
       recognition.lang = langMap[language] || 'en-US';
       recognition.interimResults = true;
-      recognition.continuous = false; // Orthodox implementation: stops after one utterance
-
-      let finalTranscript = '';
+      recognition.continuous = true;
 
       recognition.onresult = (event: any) => {
         let interim = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
-          } else {
             interim += event.results[i][0].transcript;
-          }
         }
         setInterimTranscript(interim);
       };
@@ -326,18 +390,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         console.error('Speech recognition error', event.error);
         if (event.error !== 'no-speech' && event.error !== 'aborted') {
           showToast(t('voiceError'), 'error');
-        }
-        // onend will fire after error, so cleanup is handled there.
-      };
-      
-      recognition.onend = () => {
-        recognitionCleanup();
-        const transcriptToSend = finalTranscript.trim();
-        if (transcriptToSend) {
-            wasTriggeredByVoice.current = true;
-            handleSend(transcriptToSend);
-        } else {
-            wasTriggeredByVoice.current = false;
         }
       };
       
@@ -349,15 +401,34 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       recognitionCleanup();
     }
   };
-
-  const toggleRecording = () => {
-    if (isRecording) {
+  
+  const stopRecording = (e: React.MouseEvent | React.TouchEvent) => {
+      e.preventDefault();
+      setIsRecording(false);
       if (recognitionRef.current) {
-        recognitionRef.current.stop(); // Manually stop, will trigger onend
+          recognitionRef.current.onend = () => {
+              recognitionCleanup();
+              const finalTranscript = interimTranscript.trim();
+              if (finalTranscript) {
+                setFinalUserTranscript(prev => prev ? `${prev}\n> ${finalTranscript}` : `> ${finalTranscript}`);
+                handleVoiceSend(finalTranscript);
+              }
+              setInterimTranscript('');
+          };
+          recognitionRef.current.stop();
       }
-    } else {
-      startRecording();
-    }
+  };
+
+  const closeVoiceMode = () => {
+      setIsVoiceModeActive(false);
+      recognitionCleanup();
+      window.speechSynthesis.cancel();
+      isSpeakingRef.current = false;
+      utteranceQueue.current = [];
+      setFinalUserTranscript('');
+      setStreamingAiResponse('');
+      setInterimTranscript('');
+      setIsLoading(false);
   };
   
   useEffect(() => {
@@ -386,17 +457,13 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
     } else if (!isOpen) {
         setChat(null);
-        if (recognitionRef.current) {
-            recognitionRef.current.abort(); // Stop without processing results
-            recognitionCleanup();
-        }
-        window.speechSynthesis.cancel();
+        closeVoiceMode();
     }
   }, [isOpen, currentUser, language, contacts, contactsLoaded]);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, interimTranscript]);
+  }, [messages]);
 
   const handleImageFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -438,26 +505,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       handleSend(inputValue);
   }
 
-  // Voice Mode Functions
-  const visualizeMicInput = () => {
-    if (!analyserRef.current) return;
-    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-    analyserRef.current.getByteTimeDomainData(dataArray);
-
-    let sumSquares = 0.0;
-    for (const amplitude of dataArray) {
-        const normalized = amplitude / 128.0 - 1.0; // convert to -1 to 1 range
-        sumSquares += normalized * normalized;
-    }
-    const rms = Math.sqrt(sumSquares / dataArray.length);
-    
-    const volume = Math.min(Math.max(rms, 0), 1);
-    const scale = 1 + volume * 1.5;
-    setMicScale(scale);
-    
-    animationFrameRef.current = requestAnimationFrame(visualizeMicInput);
-  };
-
   return (
     <AnimatePresence>
       {isOpen && (
@@ -478,22 +525,40 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
             onClick={(e) => e.stopPropagation()}
           >
             <AnimatePresence>
-                {isRecording && (
+                {isVoiceModeActive && (
                      <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="absolute inset-0 bg-slate-950/95 backdrop-blur-md z-20 flex flex-col items-center justify-center p-4"
+                        className="absolute inset-0 bg-slate-950 z-20 flex flex-col items-center justify-between p-6 pb-[calc(1rem+env(safe-area-inset-bottom))]"
                      >
-                        <p className="text-slate-300 text-lg h-16">{interimTranscript || '...'}</p>
-                        <motion.div 
-                            animate={{ scale: micScale }}
-                            transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-                            className="w-32 h-32 rounded-full bg-indigo-600 flex items-center justify-center my-8 shadow-2xl shadow-indigo-600/30"
-                        >
-                            <MicrophoneIcon className="w-16 h-16 text-white" />
-                        </motion.div>
-                        <span className="text-slate-400">{isSpeaking ? `${t('aiAssistant')} is speaking...` : t('speakNow')}</span>
+                        <header className="w-full flex justify-end">
+                            <button onClick={closeVoiceMode} className="w-8 h-8 grid place-items-center rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors text-2xl">&times;</button>
+                        </header>
+                        <div className="w-full flex flex-col gap-4 flex-grow justify-end pb-8">
+                            <div className="text-right text-lg text-slate-400 min-h-[5rem] overflow-y-auto">
+                                <p className="whitespace-pre-wrap">{finalUserTranscript}</p>
+                                <p className="text-white font-semibold">{interimTranscript}</p>
+                            </div>
+                            <div className="text-left text-xl text-indigo-300 min-h-[5rem] overflow-y-auto">
+                                <p className="whitespace-pre-wrap">{streamingAiResponse}</p>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col items-center">
+                            <motion.button 
+                                onMouseDown={startRecording}
+                                onMouseUp={stopRecording}
+                                onTouchStart={startRecording}
+                                onTouchEnd={stopRecording}
+                                animate={{ scale: micScale }}
+                                transition={{ type: 'spring', stiffness: 400, damping: 15 }}
+                                className="w-24 h-24 rounded-full bg-indigo-600 flex items-center justify-center my-8 shadow-2xl shadow-indigo-600/30 text-white"
+                            >
+                                <MicrophoneIcon className="w-12 h-12" />
+                            </motion.button>
+                            <span className="text-slate-400 text-sm">{isRecording ? t('listening') : t('pressToTalk')}</span>
+                        </div>
                      </motion.div>
                 )}
             </AnimatePresence>
@@ -544,7 +609,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                     </div>
                   </div>
                 ))}
-                {isLoading && (
+                {isLoading && !isVoiceModeActive && (
                     <div className="flex items-end gap-2">
                         <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>
                         <div className="bg-slate-800 text-slate-200 p-3 rounded-xl">
@@ -563,19 +628,19 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
             <div className="flex-shrink-0 p-4 border-t border-slate-800 bg-slate-950 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               <form onSubmit={handleFormSubmit} className="flex items-center gap-2">
                   <input type="file" accept="image/*" ref={photoInputRef} onChange={handleImageFileChange} className="hidden" />
-                  <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isLoading || isRecording} className="w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50">
+                  <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isLoading} className="w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50">
                       <CameraIcon className="w-6 h-6" />
                   </button>
                   <button 
                     type="button" 
-                    onClick={toggleRecording}
+                    onClick={() => setIsVoiceModeActive(true)}
                     disabled={isLoading} 
-                    className={`w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-all text-slate-400 hover:text-white disabled:opacity-50 ${isRecording ? 'bg-red-500/20 text-red-400' : 'bg-slate-800 hover:bg-slate-700'}`}
+                    className="w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-all text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50"
                   >
-                      {isRecording ? <StopCircleIcon className="w-6 h-6"/> : <MicrophoneIcon className="w-6 h-6" />}
+                      <MicrophoneIcon className="w-6 h-6" />
                   </button>
-                  <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={t('askNova')} className="w-full bg-slate-800 border-transparent rounded-lg px-4 py-3 h-12 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading || isRecording} />
-                  <button type="submit" disabled={isLoading || !inputValue.trim() || isRecording} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-800 disabled:text-slate-500 transition-colors">
+                  <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={t('askNova')} className="w-full bg-slate-800 border-transparent rounded-lg px-4 py-3 h-12 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading} />
+                  <button type="submit" disabled={isLoading || !inputValue.trim()} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-800 disabled:text-slate-500 transition-colors">
                       <SendIcon className="w-6 h-6" />
                   </button>
               </form>

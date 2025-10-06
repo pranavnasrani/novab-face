@@ -65,13 +65,6 @@ export const MicrophoneIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
-export const StopCircleIcon = ({ className }: { className?: string }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <circle cx="12" cy="12" r="10"></circle>
-        <rect x="9" y="9" width="6" height="6"></rect>
-    </svg>
-);
-
 export const VisaIcon = ({ className }: { className?: string }) => (
   <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 75 24" fill="none">
     <path d="M48.82 23.535l-6.26-22.95h5.17l6.25 22.95h-5.16zm-11.45-12.2c0-3.32 1.43-5.06 4.2-5.06 1.1 0 2.21.3 3.03.7l.9-4.3c-1.12-.5-2.65-.9-4.43-.9-5.1 0-8.2 2.8-8.2 6.9 0 2.5 1.4 4.4 3.7 5.5l2.6.9c1.4.5 1.9 1.1 1.9 1.9s-.9 1.6-2.5 1.6c-2 0-3.24-.6-4.12-1.1l-.9 4.3c1.2.6 3.1.9 4.9.9 5.5 0 8.5-2.8 8.5-7.1 0-4.3-3.9-5.9-6.6-6.9zm-16.12 12.2l3.2-11.9-2.9-11.05h5.3l1.8 8.6c.1.5.3 1.2.5 2.1h.1c.2-.9.3-1.6.5-2.1l1.8-8.6h4.9l-4.7 22.95h-5l3.2-11.8-2.9-11.15h5.3l1.8 8.6c.1.5.3 1.2.5 2.1h.1c.2-.9.3-1.6.5-2.1l1.8-8.6h4.9l-4.7 22.95h-5.2zM0 .585h3.4l2.1 22.95H.9L0 .585z" fill="#fff"/>
