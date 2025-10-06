@@ -1,8 +1,8 @@
 {
-  "name": "AI NOVA VOICE FACE ID",
+  "name": "i dunno what im dpng",
   "description": "A modern mobile banking application with an AI-powered chat assistant that can understand natural language to perform tasks like initiating payments.",
   "requestFramePermissions": [
-    "microphone",
-    "camera"
+    "camera",
+    "microphone"
   ]
 }

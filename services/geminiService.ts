@@ -1,6 +1,5 @@
-
 import { GoogleGenAI, FunctionDeclaration, Type, Chat, GenerateContentResponse } from '@google/genai';
-import { Transaction, Card, Loan } from '../types';
+import { Transaction, Card, Loan, InsightsData } from '../types';
 
 // FIX: Added a fallback of an empty string to prevent a crash if the API key is not defined.
 const API_KEY = process.env.API_KEY || '';
@@ -10,9 +9,9 @@ if (!API_KEY) {
 }
 
 // FIX: Updated to use the new API initialization with a named `apiKey` parameter.
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+export const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-const initiatePaymentFunctionDeclaration: FunctionDeclaration = {
+export const initiatePaymentFunctionDeclaration: FunctionDeclaration = {
     name: 'initiatePayment',
     description: 'Initiates a payment from the current user to a specified recipient.',
     parameters: {
@@ -43,7 +42,7 @@ const initiatePaymentFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const getCardStatementDetailsFunctionDeclaration: FunctionDeclaration = {
+export const getCardStatementDetailsFunctionDeclaration: FunctionDeclaration = {
     name: 'getCardStatementDetails',
     description: "Retrieves the current statement details for a user's credit card, including balance, minimum payment, and due date.",
     parameters: {
@@ -55,7 +54,7 @@ const getCardStatementDetailsFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const getCardTransactionsFunctionDeclaration: FunctionDeclaration = {
+export const getCardTransactionsFunctionDeclaration: FunctionDeclaration = {
     name: 'getCardTransactions',
     description: 'Fetches the recent transaction history for a specified credit card.',
     parameters: {
@@ -68,7 +67,7 @@ const getCardTransactionsFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const makeAccountPaymentFunctionDeclaration: FunctionDeclaration = {
+export const makeAccountPaymentFunctionDeclaration: FunctionDeclaration = {
     name: 'makeAccountPayment',
     description: "Makes a payment towards a user's credit card bill or loan from their main account.",
     parameters: {
@@ -95,7 +94,7 @@ const makeAccountPaymentFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const requestPaymentExtensionFunctionDeclaration: FunctionDeclaration = {
+export const requestPaymentExtensionFunctionDeclaration: FunctionDeclaration = {
     name: 'requestPaymentExtension',
     description: 'Requests a 14-day payment extension for a credit card or loan.',
     parameters: {
@@ -108,7 +107,7 @@ const requestPaymentExtensionFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const getAccountTransactionsFunctionDeclaration: FunctionDeclaration = {
+export const getAccountTransactionsFunctionDeclaration: FunctionDeclaration = {
     name: 'getAccountTransactions',
     description: "Fetches the recent transaction history for the user's main savings account.",
     parameters: {
@@ -120,7 +119,7 @@ const getAccountTransactionsFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const getAccountBalanceFunctionDeclaration: FunctionDeclaration = {
+export const getAccountBalanceFunctionDeclaration: FunctionDeclaration = {
     name: 'getAccountBalance',
     description: "Retrieves the user's current account balances, including savings, total credit card debt, and total loan debt.",
     parameters: {
@@ -130,7 +129,7 @@ const getAccountBalanceFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const applyForCreditCardFunctionDeclaration: FunctionDeclaration = {
+export const applyForCreditCardFunctionDeclaration: FunctionDeclaration = {
     name: 'applyForCreditCard',
     description: 'Processes a new credit card application for the user. All necessary personal and financial information must be collected before calling this function.',
     parameters: {
@@ -153,7 +152,7 @@ const applyForCreditCardFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
-const applyForLoanFunctionDeclaration: FunctionDeclaration = {
+export const applyForLoanFunctionDeclaration: FunctionDeclaration = {
     name: 'applyForLoan',
     description: 'Processes a new loan application for the user after collecting necessary personal and financial information.',
     parameters: {
@@ -164,19 +163,20 @@ const applyForLoanFunctionDeclaration: FunctionDeclaration = {
                 description: "Object containing all user-provided loan application details.",
                 properties: {
                     loanAmount: { type: Type.NUMBER, description: "The amount of money the user wants to borrow." },
+                    loanTerm: { type: Type.NUMBER, description: "The desired loan term in months (e.g., 24, 36, 48, 60)." },
                     address: { type: Type.STRING, description: "The user's full residential address." },
                     dateOfBirth: { type: Type.STRING, description: "The user's date of birth (e.g., YYYY-MM-DD)." },
                     employmentStatus: { type: Type.STRING, description: "e.g., Employed, Self-Employed, Unemployed." },
                     annualIncome: { type: Type.NUMBER, description: "The user's total annual income." },
                 },
-                required: ['loanAmount', 'address', 'dateOfBirth', 'employmentStatus', 'annualIncome']
+                required: ['loanAmount', 'loanTerm', 'address', 'dateOfBirth', 'employmentStatus', 'annualIncome']
             }
         },
         required: ['applicationDetails'],
     },
 };
 
-const getSpendingAnalysisFunctionDeclaration: FunctionDeclaration = {
+export const getSpendingAnalysisFunctionDeclaration: FunctionDeclaration = {
     name: 'getSpendingAnalysis',
     description: 'Analyzes the user\'s spending habits over a specified period using AI. Covers both bank and card transactions.',
     parameters: {
@@ -191,9 +191,21 @@ const getSpendingAnalysisFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
+export const allFunctionDeclarations = [
+    initiatePaymentFunctionDeclaration,
+    getCardStatementDetailsFunctionDeclaration,
+    getCardTransactionsFunctionDeclaration,
+    makeAccountPaymentFunctionDeclaration,
+    requestPaymentExtensionFunctionDeclaration,
+    applyForCreditCardFunctionDeclaration,
+    applyForLoanFunctionDeclaration,
+    getSpendingAnalysisFunctionDeclaration,
+    getAccountTransactionsFunctionDeclaration,
+    getAccountBalanceFunctionDeclaration
+];
 
-export const createChatSession = (userFullName: string, contacts: string[], language: 'en' | 'es' | 'th' | 'tl', userCards: Card[], userLoans: Loan[]): Chat => {
-    // FIX: Replaced the deprecated model `gemini-1.5-flash` with the recommended `gemini-2.5-flash`.
+// FIX: Extracted the system instruction logic into its own function to be reused for the voice session.
+export const getSystemInstruction = (userFullName: string, contacts: string[], language: 'en' | 'es' | 'th' | 'tl', userCards: Card[], userLoans: Loan[]): string => {
     const langNameMap = {
         en: 'English',
         es: 'Spanish',
@@ -201,6 +213,10 @@ export const createChatSession = (userFullName: string, contacts: string[], lang
         tl: 'Tagalog'
     };
     const langName = langNameMap[language];
+
+    const contactsInstruction = contacts.length > 0
+        ? `Available contacts by name are: ${contacts.join(', ')}. If a name doesn't match, inform the user.`
+        : "There are no other users registered. If the user asks to send money to someone by name, you must inform them that no contacts were found and they should try an account number, email, or phone instead.";
 
     const activeLoans = userLoans.filter(l => l.status === 'Active');
 
@@ -223,7 +239,7 @@ Your capabilities include initiating payments, providing card information, analy
 1.  **Payments**:
     - If the user asks to "send", "pay", "transfer", or similar, you MUST use the 'initiatePayment' tool.
     - You must have a recipient and an amount. The recipient can be identified by their name, 16-digit account number, email address, or phone number. Prioritize using the account number if provided.
-    - Available contacts by name are: ${contacts.join(', ')}. If a name doesn't match, inform the user. Do not hallucinate contacts.
+    - ${contactsInstruction} Do not hallucinate contacts.
 
 2.  **Spending Analysis**:
     - If the user asks "how much did I spend", "what's my spending breakdown", "show my expenses", or similar, you MUST use the 'getSpendingAnalysis' tool.
@@ -253,7 +269,7 @@ Your capabilities include initiating payments, providing card information, analy
 
 7.  **Loan Application**:
     - If the user wants to "apply for a loan," you MUST use the 'applyForLoan' tool.
-    - Before calling the tool, collect the desired loan amount and the other personal/financial details: address, date of birth, employment status, and annual income. You already know the user's name is ${userFullName}, so do not ask for it.
+    - Before calling the tool, collect the desired loan amount, the loan term in months, and the other personal/financial details: address, date of birth, employment status, and annual income. You already know the user's name is ${userFullName}, so do not ask for it.
     - Ask for missing information conversationally.
 
 8.  **General Conversation**:
@@ -261,25 +277,20 @@ Your capabilities include initiating payments, providing card information, analy
     - Always maintain a friendly and professional tone.
     - VERY IMPORTANT: You MUST respond exclusively in ${langName}. Do not switch languages.`;
 
-    const functionDeclarations = [
-        initiatePaymentFunctionDeclaration,
-        getCardStatementDetailsFunctionDeclaration,
-        getCardTransactionsFunctionDeclaration,
-        makeAccountPaymentFunctionDeclaration,
-        requestPaymentExtensionFunctionDeclaration,
-        applyForCreditCardFunctionDeclaration,
-        applyForLoanFunctionDeclaration,
-        getSpendingAnalysisFunctionDeclaration,
-        getAccountTransactionsFunctionDeclaration,
-        getAccountBalanceFunctionDeclaration
-    ];
+    return systemInstruction;
+};
 
+
+export const createChatSession = (userFullName: string, contacts: string[], language: 'en' | 'es' | 'th' | 'tl', userCards: Card[], userLoans: Loan[]): Chat => {
+    // FIX: Replaced the deprecated model `gemini-1.5-flash` with the recommended `gemini-2.5-flash`.
+    const systemInstruction = getSystemInstruction(userFullName, contacts, language, userCards, userLoans);
+    
     // FIX: Updated to use the new `ai.chats.create` API with the recommended `gemini-2.5-flash` model and the correct configuration structure.
     return ai.chats.create({
       model: 'gemini-2.5-flash',
       config: {
         systemInstruction: systemInstruction,
-        tools: [{ functionDeclarations }],
+        tools: [{ functionDeclarations: allFunctionDeclarations }],
       }
     });
 };
@@ -335,7 +346,7 @@ Return the information as a JSON object. If any piece of information is unclear 
     }
 };
 
-export const analyzeSpendingWithAI = async (transactions: Transaction[], language: 'en' | 'es' | 'th' | 'tl'): Promise<{ name: string; value: number }[]> => {
+export const getComprehensiveInsights = async (transactions: Transaction[], language: 'en' | 'es' | 'th' | 'tl'): Promise<InsightsData | null> => {
     const langNameMap = {
         en: 'English',
         es: 'Spanish',
@@ -343,37 +354,73 @@ export const analyzeSpendingWithAI = async (transactions: Transaction[], languag
         tl: 'Tagalog'
     };
     const languageName = langNameMap[language];
-
-    const expenseTransactions = transactions
-        .filter(tx => tx.type === 'debit')
-        .map(tx => `- ${tx.description}: $${tx.amount.toFixed(2)} on ${new Date(tx.timestamp).toLocaleDateString()}`)
-        .join('\n');
     
-    if (!expenseTransactions) {
-        return [];
+    // Ensure there are enough transactions to analyze
+    if (transactions.filter(tx => tx.type === 'debit').length < 3) {
+        return null;
     }
 
-    const prompt = `Analyze the following list of financial transactions. Group them into meaningful spending categories (e.g., 'Food & Dining', 'Transport', 'Shopping', 'Bills & Utilities', 'Entertainment', 'Groceries', 'Transfers', 'Other'). Sum the total amount for each category.
+    const transactionList = transactions
+        .map(tx => `${tx.type === 'credit' ? 'IN' : 'OUT'}: $${tx.amount.toFixed(2)} for "${tx.description}" on ${new Date(tx.timestamp).toLocaleDateString()}`)
+        .join('\n');
 
-Transactions:
-${expenseTransactions}
+    const prompt = `You are an expert financial analyst named Nova. The user's language is ${languageName}. Today is ${new Date().toLocaleDateString()}. 'This month' means the last 30 days from today. 'Last month' means the 30 days prior to that. All monetary values must be numbers. All text, including category names and suggestions, MUST be in ${languageName}.
 
-Return the result as a JSON array of objects. Each object must have a "name" (string) and a "value" (number) key. The "name" for each category MUST be translated into ${languageName}. Example: [{ "name": "Shopping", "value": 150.75 }, { "name": "Food & Dining", "value": 85.20 }]`;
+Here are the user's transactions for the last 60 days:
+${transactionList}
+
+Provide a complete financial analysis in a single JSON object matching the provided schema. The analysis must include:
+1.  **spendingBreakdown**: Group all 'OUT' (debit) transactions from 'this month' into meaningful categories (e.g., 'Food', 'Shopping', 'Transport'). Sum the total for each category.
+2.  **spendingTrend**: Compare total spending for 'this month' vs 'last month'. Calculate the overall percentage change. Find the top 2 categories with the biggest percentage change (positive or negative).
+3.  **subscriptions**: Identify recurring monthly subscriptions from all transactions.
+4.  **financialAdvice**: Analyze all transactions. Identify likely income from large, recurring 'IN' (credit) transactions. Based on income and spending, provide a brief, one-sentence cash flow forecast for the next 30 days. Also, provide two actionable saving opportunity suggestions with estimated monthly savings.`;
 
     const responseSchema = {
-        type: Type.ARRAY,
-        items: {
-            type: Type.OBJECT,
-            properties: {
-                name: { type: Type.STRING },
-                value: { type: Type.NUMBER },
+        type: Type.OBJECT,
+        properties: {
+            spendingBreakdown: {
+                type: Type.ARRAY,
+                description: 'Categorical breakdown of spending in the last 30 days.',
+                items: {
+                    type: Type.OBJECT,
+                    properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER } },
+                    required: ['name', 'value']
+                }
             },
-            required: ['name', 'value'],
+            overallSpendingChange: { type: Type.NUMBER, description: 'Overall percentage change in spending compared to the previous 30 days.' },
+            topCategoryChanges: {
+                type: Type.ARRAY,
+                description: 'Top 2 categories with the largest spending change.',
+                items: {
+                    type: Type.OBJECT,
+                    properties: { category: { type: Type.STRING }, changePercent: { type: Type.NUMBER } },
+                    required: ['category', 'changePercent']
+                }
+            },
+            subscriptions: {
+                type: Type.ARRAY,
+                description: 'Identified recurring monthly subscriptions.',
+                items: {
+                    type: Type.OBJECT,
+                    properties: { name: { type: Type.STRING }, amount: { type: Type.NUMBER } },
+                    required: ['name', 'amount']
+                }
+            },
+            cashFlowForecast: { type: Type.STRING, description: 'A brief, one-sentence forecast of the user\'s cash flow for the next 30 days.' },
+            savingOpportunities: {
+                type: Type.ARRAY,
+                description: 'Two actionable saving tips.',
+                items: {
+                    type: Type.OBJECT,
+                    properties: { suggestion: { type: Type.STRING }, potentialSavings: { type: Type.NUMBER } },
+                    required: ['suggestion', 'potentialSavings']
+                }
+            },
         },
+        required: ['spendingBreakdown', 'overallSpendingChange', 'topCategoryChanges', 'subscriptions', 'cashFlowForecast', 'savingOpportunities']
     };
 
     try {
-        // FIX: Replaced the deprecated API with `ai.models.generateContent`, using the recommended `gemini-2.5-flash` model and a structured JSON response schema.
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: prompt,
@@ -383,11 +430,10 @@ Return the result as a JSON array of objects. Each object must have a "name" (st
             }
         });
 
-        // FIX: Updated response handling to use the `.text` property instead of the deprecated `.text()` method.
         const jsonString = response.text.trim();
         return JSON.parse(jsonString);
     } catch (error) {
-        console.error("Error analyzing spending with AI:", error);
-        return [];
+        console.error("Error getting comprehensive insights:", error);
+        return null;
     }
 };

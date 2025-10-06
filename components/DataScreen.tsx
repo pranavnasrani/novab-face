@@ -1,12 +1,13 @@
-
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from '../hooks/useTranslation';
-import { UserIcon, LockIcon, ChevronLeftIcon, MailIcon, PhoneIcon } from './icons';
+import { UserIcon, LockIcon, ChevronLeftIcon, MailIcon, PhoneIcon, FingerprintIcon } from './icons';
 
 interface RegisterScreenProps {
-  onRegister: (name: string, username: string, pin: string, email: string, phone: string) => boolean;
+  onRegister: (name: string, username: string, email: string, phone: string, password: string, createPasskey: boolean) => Promise<boolean>;
   onBack: () => void;
+  onRegisterSuccess: () => void;
+  isPasskeySupported: boolean;
 }
 
 const InputField = ({ icon, ...props }: { icon: React.ReactNode } & React.InputHTMLAttributes<HTMLInputElement>) => (
@@ -26,23 +27,33 @@ const InputField = ({ icon, ...props }: { icon: React.ReactNode } & React.InputH
   </motion.div>
 );
 
-export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBack }) => {
+export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBack, onRegisterSuccess, isPasskeySupported }) => {
   const { t } = useTranslation();
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
-  const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [wantsPasskey, setWantsPasskey] = useState(true);
   
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !username || pin.length !== 4 || !email || !phone) {
+    setError('');
+
+    if (!name || !username || !email || !phone || !password) {
         setError(t('registerError'));
         return;
     }
-    if (!onRegister(name, username, pin, email, phone)) {
+    
+    setIsSubmitting(true);
+    const success = await onRegister(name, username, email, phone, password, isPasskeySupported && wantsPasskey);
+    if (success) {
+      onRegisterSuccess();
+    } else {
       setError(t('registerErrorUsernameTaken'));
+      setIsSubmitting(false);
     }
   };
 
@@ -90,13 +101,32 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onBa
           >
             <form onSubmit={handleRegister} className="space-y-5">
               <h2 className="text-2xl font-bold text-center mb-2 text-white">{t('createAccount')}</h2>
-              <InputField icon={<UserIcon />} type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('fullNamePlaceholder')} />
-              <InputField icon={<UserIcon />} type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('usernamePlaceholder')} />
-              <InputField icon={<MailIcon />} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('emailPlaceholder')} />
-              <InputField icon={<PhoneIcon />} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('phonePlaceholder')} />
-              <InputField icon={<LockIcon />} type="password" value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder="****" />
+              <InputField icon={<UserIcon />} type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('fullNamePlaceholder')} disabled={isSubmitting} />
+              <InputField icon={<UserIcon />} type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('usernamePlaceholder')} disabled={isSubmitting} />
+              <InputField icon={<MailIcon />} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('emailPlaceholder')} disabled={isSubmitting} />
+              <InputField icon={<PhoneIcon />} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('phonePlaceholder')} disabled={isSubmitting} />
+              <InputField icon={<LockIcon />} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('password')} disabled={isSubmitting} />
+              
+              {isPasskeySupported && (
+                 <div className="flex items-center justify-center gap-3 !mt-6 text-slate-300">
+                    <input 
+                        type="checkbox" 
+                        id="createPasskey" 
+                        checked={wantsPasskey}
+                        onChange={(e) => setWantsPasskey(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-600 focus:ring-offset-slate-900"
+                    />
+                    <label htmlFor="createPasskey" className="text-sm font-medium flex items-center gap-1.5 cursor-pointer">
+                        <FingerprintIcon className="w-4 h-4" />
+                        {t('createPasskeyForFasterSignIn')}
+                    </label>
+                </div>
+              )}
+
               {error && <p className="text-red-400 text-sm text-center !mt-4">{error}</p>}
-              <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-all text-lg">{t('getStarted')}</motion.button>
+              <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-all text-lg" disabled={isSubmitting}>
+                {isSubmitting ? t('submitting') : t('getStarted')}
+              </motion.button>
             </form>
           </motion.div>
         </motion.div>

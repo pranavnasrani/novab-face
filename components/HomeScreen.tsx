@@ -1,11 +1,11 @@
 
+
 import React, { useContext, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Transaction } from '../types';
 import { BankContext } from '../App';
-import { ArrowDownLeftIcon, ArrowUpRightIcon, BankIcon, CreditCardIcon, DollarSignIcon, ArrowTrendingUpIcon, SparklesIcon } from './icons';
+import { ArrowDownLeftIcon, ArrowUpRightIcon, BankIcon, CreditCardIcon, DollarSignIcon, ArrowTrendingUpIcon } from './icons';
 import { useTranslation } from '../hooks/useTranslation';
-import { DonutChart } from './DonutChart';
 
 const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -95,7 +95,7 @@ const TransactionList = () => {
     const { t } = useTranslation();
     const userTransactions = useMemo(() => {
         return transactions
-            .filter(tx => tx.userId === currentUser?.id)
+            .filter(tx => tx.uid === currentUser?.uid)
             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
             .slice(0, 3); // Show latest 3 transactions
     }, [transactions, currentUser]);
@@ -116,32 +116,10 @@ const TransactionList = () => {
     );
 };
 
-interface HomeScreenProps {
-    spendingData: { name: string; value: number }[];
-    isLoading: boolean;
-}
-
-export const HomeScreen: React.FC<HomeScreenProps> = ({ spendingData, isLoading }) => {
-    const { t } = useTranslation();
-
+export const HomeScreen: React.FC = () => {
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col">
             <BalanceCard />
-
-            <div className="p-4">
-                 <h2 className="text-lg font-semibold text-white mb-2">{t('spendingThisMonth')}</h2>
-                 <div className="bg-slate-800 rounded-3xl">
-                     {isLoading ? (
-                        <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-3">
-                            <SparklesIcon className="w-8 h-8 text-indigo-400 animate-pulse" />
-                            <p>AI is analyzing your spending...</p>
-                        </div>
-                    ) : (
-                        <DonutChart data={spendingData} />
-                    )}
-                </div>
-            </div>
-            
             <TransactionList />
         </div>
     );
