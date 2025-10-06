@@ -204,9 +204,8 @@ export const allFunctionDeclarations = [
     getAccountBalanceFunctionDeclaration
 ];
 
-
-export const createChatSession = (userFullName: string, contacts: string[], language: 'en' | 'es' | 'th' | 'tl', userCards: Card[], userLoans: Loan[]): Chat => {
-    // FIX: Replaced the deprecated model `gemini-1.5-flash` with the recommended `gemini-2.5-flash`.
+// FIX: Extracted the system instruction logic into its own function to be reused for the voice session.
+export const getSystemInstruction = (userFullName: string, contacts: string[], language: 'en' | 'es' | 'th' | 'tl', userCards: Card[], userLoans: Loan[]): string => {
     const langNameMap = {
         en: 'English',
         es: 'Spanish',
@@ -278,6 +277,14 @@ Your capabilities include initiating payments, providing card information, analy
     - Always maintain a friendly and professional tone.
     - VERY IMPORTANT: You MUST respond exclusively in ${langName}. Do not switch languages.`;
 
+    return systemInstruction;
+};
+
+
+export const createChatSession = (userFullName: string, contacts: string[], language: 'en' | 'es' | 'th' | 'tl', userCards: Card[], userLoans: Loan[]): Chat => {
+    // FIX: Replaced the deprecated model `gemini-1.5-flash` with the recommended `gemini-2.5-flash`.
+    const systemInstruction = getSystemInstruction(userFullName, contacts, language, userCards, userLoans);
+    
     // FIX: Updated to use the new `ai.chats.create` API with the recommended `gemini-2.5-flash` model and the correct configuration structure.
     return ai.chats.create({
       model: 'gemini-2.5-flash',

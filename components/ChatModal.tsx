@@ -1,42 +1,13 @@
-
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights, ai } from '../services/geminiService';
+// FIX: Import the new `getSystemInstruction` function to build the system prompt for voice sessions.
+import { allFunctionDeclarations, createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights, ai, getSystemInstruction } from '../services/geminiService';
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
 import { SparklesIcon, SendIcon, CameraIcon, MicrophoneIcon, StopCircleIcon } from './icons';
-import { Chat } from '@google/genai';
+// FIX: Removed `LiveSession` from the import as it's not an exported member of the `@google/genai` package.
+import { Chat, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/firebase';
-
-// FIX: Add type declarations for the SpeechRecognition API, which is not yet a standard part of TypeScript's DOM typings. This resolves compilation errors related to voice input.
-interface SpeechRecognition {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  onstart: () => void;
-  onresult: (event: any) => void;
-  onerror: (event: any) => void;
-  onend: () => void;
-  stop: () => void;
-  start: () => void;
-}
-declare global {
-  interface Window {
-    SpeechRecognition: new () => SpeechRecognition;
-    webkitSpeechRecognition: new () => SpeechRecognition;
-  }
-}
-
-interface ChatModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
-
-type Message = {
-  id: number;
-  sender: 'user' | 'ai' | 'system';
-  text: string;
-};
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -54,6 +25,68 @@ const suggestionPrompts = [
   'prompt1', 'prompt2', 'prompt3', 'prompt4'
 ];
 
+// Audio Encoding/Decoding functions for Live API
+function encode(bytes: Uint8Array) {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function decode(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
+
+function createBlob(data: Float32Array): Blob {
+  const l = data.length;
+  const int16 = new Int16Array(l);
+  for (let i = 0; i < l; i++) {
+    int16[i] = data[i] * 32768;
+  }
+  return {
+    data: encode(new Uint8Array(int16.buffer)),
+    mimeType: 'audio/pcm;rate=16000',
+  };
+}
+
+interface ChatModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+type Message = {
+  id: number;
+  sender: 'user' | 'ai' | 'system';
+  text: string;
+};
+
 export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const { currentUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey, showToast } = useContext(BankContext);
   const { t, language } = useTranslation();
@@ -69,10 +102,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   
   // Voice mode state and refs
   const [isVoiceMode, setIsVoiceMode] = useState(false);
-  const [voiceState, setVoiceState] = useState<'idle' | 'listening' | 'speaking'>('idle');
-  const [transcribedText, setTranscribedText] = useState('');
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const lastSpokenId = useRef<number | null>(null);
+  const [voiceState, setVoiceState] = useState<'idle' | 'listening' | 'speaking' | 'connecting'>('idle');
+  const [voiceTranscript, setVoiceTranscript] = useState<Array<{ sender: 'user' | 'ai', text: string }>>([]);
+  // FIX: Replaced the non-exported `LiveSession` type with `any` to resolve the type error.
+  const sessionPromiseRef = useRef<any | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const inputAudioContextRef = useRef<AudioContext | null>(null);
+  const outputAudioContextRef = useRef<AudioContext | null>(null);
+  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const audioPlaybackSources = useRef(new Set<AudioBufferSourceNode>());
+  const nextAudioStartTime = useRef(0);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -108,20 +148,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, voiceTranscript]);
 
-  // Effect to speak new AI/system messages when in voice mode
-  useEffect(() => {
-      if (!isVoiceMode || isLoading) return;
-      const lastMessage = messages[messages.length - 1];
-
-      if (lastMessage && lastMessage.id !== lastSpokenId.current) {
-          if (lastMessage.sender === 'ai' || (lastMessage.sender === 'system' && !lastMessage.text.toLowerCase().includes('passkey'))) {
-              speak(lastMessage.text);
-              lastSpokenId.current = lastMessage.id;
-          }
-      }
-  }, [messages, isVoiceMode, isLoading]);
 
   const handleFunctionCall = async (call: { name?: string, args?: any }): Promise<{ success: boolean; message: string; resultForModel: object }> => {
       if (!call.name) {
@@ -330,91 +358,162 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       handleSend(inputValue);
   }
 
-  // Voice Mode: Text-to-Speech
-  const speak = (text: string) => {
-      if (!('speechSynthesis' in window)) {
-          showToast('Text-to-speech not supported in this browser.', 'error');
-          return;
-      }
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = language;
-      utterance.onstart = () => setVoiceState('speaking');
-      utterance.onend = () => {
-          setVoiceState('idle');
-          setIsVoiceMode(false); // End voice mode after speaking is done
-      };
-      utterance.onerror = (event) => {
-          console.error('Speech synthesis error', event.error);
-          stopVoiceMode();
-      };
-      window.speechSynthesis.speak(utterance);
-  };
-
   // Voice Mode Functions
   const stopVoiceMode = () => {
-    recognitionRef.current?.stop();
-    window.speechSynthesis.cancel();
+    sessionPromiseRef.current?.then((session: any) => session.close());
+    sessionPromiseRef.current = null;
+    
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+    
+    scriptProcessorRef.current?.disconnect();
+    scriptProcessorRef.current = null;
+    
+    mediaStreamSourceRef.current?.disconnect();
+    mediaStreamSourceRef.current = null;
+    
+    inputAudioContextRef.current?.close();
+    outputAudioContextRef.current?.close();
+
+    audioPlaybackSources.current.forEach(source => source.stop());
+    audioPlaybackSources.current.clear();
+
     setIsVoiceMode(false);
     setVoiceState('idle');
-    setTranscribedText('');
-    lastSpokenId.current = null;
   };
 
-  const startVoiceMode = () => {
-      // FIX: Use the typed `window.SpeechRecognition` and `window.webkitSpeechRecognition` which are now available due to the global type declarations.
-      const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognitionImpl) {
-          showToast('Speech recognition is not supported by your browser.', 'error');
-          return;
-      }
+  const startVoiceMode = async () => {
+    if (!currentUser || !chat) return;
 
-      recognitionRef.current = new SpeechRecognitionImpl();
-      const recognition = recognitionRef.current;
-      
-      recognition.lang = language;
-      recognition.interimResults = true;
-      recognition.continuous = false;
+    setIsVoiceMode(true);
+    setVoiceState('connecting');
+    setVoiceTranscript([]);
 
-      recognition.onstart = () => {
-          setVoiceState('listening');
-      };
+    try {
+        streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+        showToast(t('micAccessDenied'), 'error');
+        stopVoiceMode();
+        return;
+    }
 
-      recognition.onresult = (event) => {
-          let interim = '';
-          let final = '';
-          for (let i = 0; i < event.results.length; ++i) {
-              if (event.results[i].isFinal) {
-                  final += event.results[i][0].transcript;
-              } else {
-                  interim += event.results[i][0].transcript;
-              }
-          }
-          setTranscribedText(final || interim);
-          if (final) {
-              recognition.stop();
-              handleSend(final.trim());
-          }
-      };
+    // FIX: Safely create AudioContext instances, handling browser differences and potential lack of support.
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) {
+        showToast(t('micAccessDenied'), 'error'); // A more generic error could be used here
+        stopVoiceMode();
+        return;
+    }
+    inputAudioContextRef.current = new AudioContextClass({ sampleRate: 16000 });
+    outputAudioContextRef.current = new AudioContextClass({ sampleRate: 24000 });
+    nextAudioStartTime.current = 0;
 
-      recognition.onerror = (event) => {
-          console.error('Speech recognition error:', event.error);
-          if (event.error === 'no-speech' || event.error === 'network') {
-              showToast(t('voiceError'), 'error');
-          }
-          stopVoiceMode();
-      };
-      
-      recognition.onend = () => {
-          if (voiceState === 'listening') {
-              // Ended without a final result, so just stop.
-              stopVoiceMode();
-          }
-      };
+    let currentInputTranscription = '';
+    let currentOutputTranscription = '';
 
-      setIsVoiceMode(true);
-      setTranscribedText('');
-      recognition.start();
+    // FIX: Use the exported `getSystemInstruction` function to avoid accessing the private `config` property.
+    const systemInstruction = getSystemInstruction(currentUser.name, contacts, language, currentUser.cards, currentUser.loans);
+    
+    sessionPromiseRef.current = ai.live.connect({
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        callbacks: {
+            onopen: () => {
+                setVoiceState('listening');
+                const inputCtx = inputAudioContextRef.current;
+                if (!inputCtx || !streamRef.current) return;
+                
+                mediaStreamSourceRef.current = inputCtx.createMediaStreamSource(streamRef.current);
+                scriptProcessorRef.current = inputCtx.createScriptProcessor(4096, 1, 1);
+                
+                scriptProcessorRef.current.onaudioprocess = (audioProcessingEvent) => {
+                    const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                    const pcmBlob = createBlob(inputData);
+                    sessionPromiseRef.current?.then((session: any) => {
+                        session.sendRealtimeInput({ media: pcmBlob });
+                    });
+                };
+
+                mediaStreamSourceRef.current.connect(scriptProcessorRef.current);
+                scriptProcessorRef.current.connect(inputCtx.destination);
+            },
+            onmessage: async (message: LiveServerMessage) => {
+                const outCtx = outputAudioContextRef.current;
+                if (!outCtx) return;
+
+                if (message.serverContent?.outputTranscription) {
+                    const text = message.serverContent.outputTranscription.text;
+                    currentOutputTranscription += text;
+                    setVoiceTranscript(prev => {
+                        const last = prev[prev.length - 1];
+                        if (last?.sender === 'ai') {
+                            return [...prev.slice(0, -1), { sender: 'ai', text: currentOutputTranscription }];
+                        }
+                        return [...prev, { sender: 'ai', text: currentOutputTranscription }];
+                    });
+                } else if (message.serverContent?.inputTranscription) {
+                    const text = message.serverContent.inputTranscription.text;
+                    // FIX: Removed usage of `isFinal` as it does not exist on the `Transcription` type and the variable was unused.
+                    currentInputTranscription += text;
+                    setVoiceTranscript(prev => {
+                        const last = prev[prev.length - 1];
+                        if (last?.sender === 'user') {
+                            return [...prev.slice(0, -1), { sender: 'user', text: currentInputTranscription }];
+                        }
+                        return [...prev, { sender: 'user', text: currentInputTranscription }];
+                    });
+                }
+                
+                if (message.serverContent?.turnComplete) {
+                    currentInputTranscription = '';
+                    currentOutputTranscription = '';
+                }
+
+                const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
+                if (base64EncodedAudioString) {
+                    setVoiceState('speaking');
+                    nextAudioStartTime.current = Math.max(nextAudioStartTime.current, outCtx.currentTime);
+                    const audioBuffer = await decodeAudioData(decode(base64EncodedAudioString), outCtx, 24000, 1);
+                    const source = outCtx.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(outCtx.destination);
+                    source.addEventListener('ended', () => {
+                        audioPlaybackSources.current.delete(source);
+                        if (audioPlaybackSources.current.size === 0) {
+                            setVoiceState('listening');
+                        }
+                    });
+                    source.start(nextAudioStartTime.current);
+                    nextAudioStartTime.current += audioBuffer.duration;
+                    audioPlaybackSources.current.add(source);
+                }
+
+                const interrupted = message.serverContent?.interrupted;
+                if (interrupted) {
+                    for (const source of audioPlaybackSources.current.values()) {
+                        source.stop();
+                    }
+                    audioPlaybackSources.current.clear();
+                    nextAudioStartTime.current = 0;
+                    setVoiceState('listening');
+                }
+            },
+            onerror: (e: ErrorEvent) => {
+                console.error('Live session error:', e);
+                showToast(t('voiceError'), 'error');
+                stopVoiceMode();
+            },
+            onclose: (e: CloseEvent) => {
+                console.debug('Live session closed.');
+            },
+        },
+        config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+            systemInstruction: systemInstruction,
+            inputAudioTranscription: {},
+            outputAudioTranscription: {},
+        },
+    });
   };
 
   const toggleVoiceMode = () => {
@@ -450,14 +549,23 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="absolute inset-0 bg-slate-950 z-20 flex flex-col justify-between p-6"
+                        className="absolute inset-0 bg-slate-950 z-20 flex flex-col"
                      >
-                        <div className="text-center h-1/3 flex flex-col justify-center items-center">
-                             <p className="text-xl text-white font-semibold min-h-[3em] px-4">
-                                 {transcribedText || (voiceState === 'listening' && t('speakNow'))}
-                             </p>
+                        <div className="flex-grow p-4 overflow-y-auto" ref={messagesEndRef}>
+                          <div className="space-y-4">
+                              {voiceTranscript.map((msg, index) => (
+                                  <div key={index} className={`flex items-end gap-2 ${msg.sender === 'user' ? 'justify-end' : ''}`}>
+                                      {msg.sender === 'ai' && <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>}
+                                      <div className={`max-w-xs md:max-w-md p-3 rounded-xl ${
+                                        msg.sender === 'user' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-200'
+                                      }`}>
+                                        <p className="text-sm">{msg.text}</p>
+                                      </div>
+                                  </div>
+                              ))}
+                          </div>
                         </div>
-                        <div className="flex flex-col items-center gap-4">
+                        <div className="flex-shrink-0 p-6 flex flex-col items-center justify-center gap-4">
                             <motion.button 
                                 onClick={stopVoiceMode} 
                                 className="text-white relative w-24 h-24 flex items-center justify-center"
@@ -480,26 +588,18 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                                     }}
                                 />
 
-                                {isLoading ? (
-                                    <div className="w-20 h-20 rounded-full border-4 border-slate-700 border-t-indigo-500 animate-spin flex items-center justify-center"></div>
+                                {voiceState === 'connecting' ? (
+                                    <div className="w-20 h-20 rounded-full border-4 border-slate-700 border-t-indigo-500 animate-spin"></div>
                                 ) : (
                                     voiceState === 'speaking' ? <SparklesIcon className="w-12 h-12 text-indigo-400" /> : <MicrophoneIcon className="w-12 h-12 text-indigo-400" />
                                 )}
                             </motion.button>
-                            <span className="text-slate-400 text-sm">{t('tapToStop')}</span>
-                        </div>
-                        <div className="text-center h-1/3 flex flex-col justify-center">
-                            <AnimatePresence>
-                            {voiceState === 'speaking' && (
-                                <motion.p 
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    className="text-lg text-slate-300"
-                                >
-                                    {t('aiAssistant')} is speaking...
-                                </motion.p>
-                            )}
-                            </AnimatePresence>
+                            <span className="text-slate-400 text-sm">
+                              {voiceState === 'listening' && t('speakNow')}
+                              {voiceState === 'speaking' && `${t('aiAssistant')} is speaking...`}
+                              {voiceState === 'connecting' && t('connecting')}
+                            </span>
+                             <button onClick={stopVoiceMode} className="mt-2 text-slate-500 hover:text-white transition-colors">{t('tapToStop')}</button>
                         </div>
                      </motion.div>
                 )}
