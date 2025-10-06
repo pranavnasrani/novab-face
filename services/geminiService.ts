@@ -206,7 +206,7 @@ export const allFunctionDeclarations = [
 ];
 
 // FIX: Extracted the system instruction logic into its own function to be reused for the voice session.
-export const getSystemInstruction = (userFullName: string, contacts: string[], language: 'en' | 'es' | 'th' | 'tl', userCards: Card[], userLoans: Loan[]): string => {
+export const getSystemInstruction = (userFullName: string, language: 'en' | 'es' | 'th' | 'tl', userCards: Card[], userLoans: Loan[]): string => {
     const langNameMap = {
         en: 'English',
         es: 'Spanish',
@@ -215,12 +215,7 @@ export const getSystemInstruction = (userFullName: string, contacts: string[], l
     };
     const langName = langNameMap[language];
 
-    let contactsInstruction;
-    if (contacts.length > 0) {
-        contactsInstruction = `The user can transfer money to ANY user in the banking system, not just a pre-defined list of contacts. The 'initiatePayment' tool is powerful and can find any recipient by their full name, first name, username, account number, email address, or phone number. To help you, here is a list of some other users in the system: ${contacts.join(', ')}. This list is for convenience and is not exhaustive. If a user specifies a recipient by a name that is ambiguous or not found, ask for a more specific identifier like an account number or username. Do not hallucinate recipient details.`;
-    } else {
-        contactsInstruction = "There are no other users registered in the system. If the user asks to send money to someone, you must inform them that no recipients are available.";
-    }
+    const contactsInstruction = `The 'initiatePayment' tool will automatically search the bank's database to find any recipient. You can identify a recipient by their full name, first name, username, 16-digit account number, email address, or phone number. Simply call the tool with whatever identifier the user provides. If the tool cannot find the user, it will return an error, and you should inform the user that the recipient was not found and ask for a more specific identifier. You do not need a pre-defined list of contacts.`;
 
     const activeLoans = userLoans.filter(l => l.status === 'Active');
 
@@ -285,9 +280,9 @@ Your capabilities include initiating payments, providing card information, analy
 };
 
 
-export const createChatSession = (userFullName: string, contacts: string[], language: 'en' | 'es' | 'th' | 'tl', userCards: Card[], userLoans: Loan[]): Chat => {
+export const createChatSession = (userFullName: string, language: 'en' | 'es' | 'th' | 'tl', userCards: Card[], userLoans: Loan[]): Chat => {
     // FIX: Replaced the deprecated model `gemini-1.5-flash` with the recommended `gemini-2.5-flash`.
-    const systemInstruction = getSystemInstruction(userFullName, contacts, language, userCards, userLoans);
+    const systemInstruction = getSystemInstruction(userFullName, language, userCards, userLoans);
     
     // FIX: Updated to use the new `ai.chats.create` API with the recommended `gemini-2.5-flash` model and the correct configuration structure.
     return ai.chats.create({

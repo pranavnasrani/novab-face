@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights } from '../services/geminiService';
@@ -115,8 +116,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [chat, setChat] = useState<Chat | null>(null);
-  const [contacts, setContacts] = useState<string[]>([]);
-  const [contactsLoaded, setContactsLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const messageId = useRef(0);
@@ -380,35 +379,21 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   }, [language, showToast, t]);
   
   useEffect(() => {
-    const fetchUsers = async () => {
-        if (isOpen && currentUser) {
-            setContactsLoaded(false);
-            const usersRef = db.collection("users");
-            const q = usersRef.where("uid", "!=", currentUser.uid);
-            const querySnapshot = await q.get();
-            const userNames = querySnapshot.docs.map(doc => doc.data().name);
-            setContacts(userNames);
-            setContactsLoaded(true);
-        } else if (!isOpen) {
-            setContacts([]);
-            setContactsLoaded(false);
-        }
-    };
-    fetchUsers();
-  }, [isOpen, currentUser]);
-  
-  useEffect(() => {
-    if (isOpen && currentUser && contactsLoaded && !chat) {
+    if (isOpen && currentUser && !chat) {
+        setChat(null); // Reset chat session when modal opens
         messageId.current = 0;
         setMessages([{ id: messageId.current++, sender: 'ai', text: t('chatGreeting', { name: currentUser?.name.split(' ')[0] })}]);
         setInputValue('');
-        setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
-    } else if (!isOpen && isListening) {
-        setIsListening(false);
-        setIsVoiceMode(false);
-        recognitionRef.current?.abort();
+        setChat(createChatSession(currentUser.name, language, currentUser.cards, currentUser.loans));
+    } else if (!isOpen) {
+        setChat(null); // Clear chat session when modal closes
+        if (isListening) {
+            setIsListening(false);
+            setIsVoiceMode(false);
+            recognitionRef.current?.abort();
+        }
     }
-  }, [isOpen, currentUser, language, contacts, contactsLoaded, isListening, chat]);
+  }, [isOpen, currentUser, language]);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
