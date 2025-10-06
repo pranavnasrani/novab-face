@@ -20,7 +20,7 @@ const CardFace = ({ card, isFlipped, name }: { card: Card, isFlipped: boolean, n
       <div className={`absolute w-full h-full bg-gradient-to-br ${card.color || 'from-indigo-500 to-purple-600'} rounded-3xl p-5 flex flex-col justify-between text-white shadow-lg`} style={{ backfaceVisibility: 'hidden' }}>
         <div className="flex justify-between items-start">
           <span className="font-semibold text-lg">Nova Bank</span>
-          {card.cardType === 'Visa' ? <VisaIcon className="w-16" /> : <MastercardIcon className="w-12" />}
+          {card.cardType === 'Visa' ? <VisaIcon className="w-16 h-auto" /> : <MastercardIcon className="w-12 h-auto" />}
         </div>
         <div>
           <p className="text-xl font-mono tracking-wider">{formatCardNumber(card.cardNumber)}</p>
