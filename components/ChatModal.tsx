@@ -59,15 +59,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const messageId = useRef(0);
   
-  const [isVoiceSessionActive, setIsVoiceSessionActive] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const isVoiceSessionActiveRef = useRef(isVoiceSessionActive);
   const inputValueRef = useRef(inputValue);
-
-  useEffect(() => {
-    isVoiceSessionActiveRef.current = isVoiceSessionActive;
-  }, [isVoiceSessionActive]);
   
   useEffect(() => {
       inputValueRef.current = inputValue;
@@ -181,38 +175,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       }
   };
 
-  const speak = (text: string) => {
-      if (!window.speechSynthesis) return;
-      const utterance = new SpeechSynthesisUtterance(text);
-      
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0) {
-        const voice = voices.find(v => v.lang.startsWith(language)) || voices.find(v => v.lang.startsWith('en')) || voices[0];
-        if (voice) {
-            utterance.voice = voice;
-        }
-      } else {
-          window.speechSynthesis.onvoiceschanged = () => {
-              const voices = window.speechSynthesis.getVoices();
-              const voice = voices.find(v => v.lang.startsWith(language)) || voices.find(v => v.lang.startsWith('en')) || voices[0];
-              if (voice) utterance.voice = voice;
-              window.speechSynthesis.speak(utterance);
-              window.speechSynthesis.onvoiceschanged = null;
-          };
-      }
-
-      utterance.onend = () => {
-          if (isVoiceSessionActiveRef.current) {
-              startListening();
-          }
-      };
-      
-      window.speechSynthesis.cancel();
-      if (voices.length > 0) {
-          window.speechSynthesis.speak(utterance);
-      }
-  }
-
   const handleSend = async (prompt: string) => {
     if (!prompt.trim() || isLoading || !currentUser || !chat) return;
     
@@ -263,22 +225,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         if (finalResponse.text) {
             const aiMessage: Message = { id: messageId.current++, sender: 'ai', text: finalResponse.text };
             setMessages(prev => [...prev, aiMessage]);
-            if (isVoiceSessionActiveRef.current) speak(finalResponse.text);
-        } else if (isVoiceSessionActiveRef.current) {
-            startListening();
         }
 
       } else {
         const aiResponse: Message = { id: messageId.current++, sender: 'ai', text: response.text };
         setMessages(prev => [...prev, aiResponse]);
-        if (isVoiceSessionActiveRef.current) speak(aiResponse.text);
       }
 
     } catch (error) {
         console.error("Error during AI chat:", error);
         const errorMessage: Message = { id: messageId.current++, sender: 'system', text: t('chatError') };
         setMessages(prev => [...prev, errorMessage]);
-        if (isVoiceSessionActiveRef.current) startListening();
     } finally {
         setIsLoading(false);
     }
@@ -289,15 +246,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     handleSendRef.current = handleSend;
   });
 
-  const toggleVoiceMode = () => {
-    const nextIsSessionActive = !isVoiceSessionActive;
-    setIsVoiceSessionActive(nextIsSessionActive);
-    if (nextIsSessionActive) {
-        startListening();
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.abort();
     } else {
-        setIsListening(false);
-        recognitionRef.current?.abort();
-        window.speechSynthesis.cancel();
+      startListening();
     }
   };
 
@@ -330,7 +283,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         setIsListening(false);
         const finalTranscript = inputValueRef.current.trim();
         
-        if (isVoiceSessionActiveRef.current && finalTranscript) {
+        if (finalTranscript) {
             handleSendRef.current(finalTranscript);
         }
     };
@@ -338,15 +291,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     recognition.onerror = (event) => {
         setIsListening(false);
         console.error("Speech recognition error", event.error);
-        if (isVoiceSessionActiveRef.current) {
-            if (event.error === 'no-speech' || event.error === 'audio-capture') {
-                setTimeout(() => {
-                    if (isVoiceSessionActiveRef.current) startListening();
-                }, 100);
-            } else {
-                showToast(t('voiceError'), 'error');
-                setIsVoiceSessionActive(false);
-            }
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+            showToast(t('voiceError'), 'error');
         }
     };
 
@@ -381,13 +327,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         setMessages([{ id: messageId.current++, sender: 'ai', text: t('chatGreeting', { name: currentUser?.name.split(' ')[0] })}]);
         setInputValue('');
         setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
-    } else if (!isOpen && isVoiceSessionActive) {
-        setIsVoiceSessionActive(false);
+    } else if (!isOpen && isListening) {
         setIsListening(false);
         recognitionRef.current?.abort();
-        window.speechSynthesis.cancel();
     }
-  }, [isOpen, currentUser, language, contacts, contactsLoaded, isVoiceSessionActive, chat]);
+  }, [isOpen, currentUser, language, contacts, contactsLoaded, isListening, chat]);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -522,11 +466,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                   <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isLoading || isListening} className="w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50">
                       <CameraIcon className="w-6 h-6" />
                   </button>
-                  <button type="button" onClick={toggleVoiceMode} disabled={isLoading} className={`w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors bg-slate-800 hover:bg-slate-700 disabled:opacity-50 ${isListening ? 'text-blue-400' : 'text-slate-400'}`}>
+                  <button type="button" onClick={toggleListening} disabled={isLoading} className={`w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors bg-slate-800 hover:bg-slate-700 disabled:opacity-50 ${isListening ? 'text-blue-400' : 'text-slate-400'}`}>
                       <MicrophoneIcon className="w-6 h-6" />
                   </button>
                   <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={isListening ? t('listening') : t('askNova')} className="w-full bg-slate-800 border-transparent rounded-lg px-4 py-3 h-12 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading || isListening} />
-                  <button type="submit" disabled={isLoading || !inputValue.trim() || isVoiceSessionActive} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-800 disabled:text-slate-500 transition-colors">
+                  <button type="submit" disabled={isLoading || !inputValue.trim() || isListening} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-800 disabled:text-slate-500 transition-colors">
                       <SendIcon className="w-6 h-6" />
                   </button>
               </form>
