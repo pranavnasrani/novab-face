@@ -1,10 +1,8 @@
-
-
 import React, { useContext, useState } from 'react';
 import { motion } from 'framer-motion';
 import { BankContext } from '../App';
 import { Loan } from '../types';
-import { DollarSignIcon } from './icons';
+import { DollarSignIcon, RefreshCwIcon } from './icons';
 import { useTranslation } from '../hooks/useTranslation';
 
 const formatCurrency = (amount: number) => {
@@ -56,14 +54,22 @@ const LoanItem: React.FC<{ loan: Loan; index: number }> = ({ loan, index }) => {
 };
 
 export const LoansScreen = () => {
-    const { currentUser } = useContext(BankContext);
+    const { currentUser, refreshUserData, isRefreshing } = useContext(BankContext);
     const { t } = useTranslation();
     const activeLoans = currentUser?.loans.filter(l => l.status === 'Active') || [];
 
     return (
         <div className="relative flex flex-col">
-            <div className="p-4">
+            <div className="p-4 flex justify-between items-center">
                 <h2 className="text-lg font-semibold text-white">{t('yourLoans')}</h2>
+                <button
+                    onClick={refreshUserData}
+                    disabled={isRefreshing}
+                    className="text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+                    aria-label="Refresh loans"
+                >
+                    <RefreshCwIcon className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                </button>
             </div>
             <div className="p-4 flex-grow flex flex-col gap-4">
                 {activeLoans.length > 0 ? (

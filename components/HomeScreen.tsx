@@ -1,10 +1,8 @@
-
-
 import React, { useContext, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Transaction } from '../types';
 import { BankContext } from '../App';
-import { ArrowDownLeftIcon, ArrowUpRightIcon, BankIcon, CreditCardIcon, DollarSignIcon, ArrowTrendingUpIcon } from './icons';
+import { ArrowDownLeftIcon, ArrowUpRightIcon, BankIcon, CreditCardIcon, DollarSignIcon, ArrowTrendingUpIcon, RefreshCwIcon } from './icons';
 import { useTranslation } from '../hooks/useTranslation';
 
 const formatCurrency = (amount: number) => {
@@ -91,7 +89,7 @@ const TransactionItem: React.FC<{ tx: Transaction; index: number }> = ({ tx, ind
 };
 
 const TransactionList = () => {
-    const { currentUser, transactions } = useContext(BankContext);
+    const { currentUser, transactions, refreshUserData, isRefreshing } = useContext(BankContext);
     const { t } = useTranslation();
     const userTransactions = useMemo(() => {
         return transactions
@@ -102,7 +100,17 @@ const TransactionList = () => {
 
     return (
         <div className="p-4 flex-grow">
-            <h2 className="text-lg font-semibold text-white mb-2">{t('recentActivity')}</h2>
+            <div className="flex justify-between items-center mb-2">
+                <h2 className="text-lg font-semibold text-white">{t('recentActivity')}</h2>
+                <button
+                    onClick={refreshUserData}
+                    disabled={isRefreshing}
+                    className="text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+                    aria-label="Refresh recent activity"
+                >
+                    <RefreshCwIcon className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                </button>
+            </div>
             {userTransactions.length > 0 ? (
                 <ul className="divide-y divide-slate-800">
                     {userTransactions.map((tx, i) => <TransactionItem key={tx.id} tx={tx} index={i} />)}

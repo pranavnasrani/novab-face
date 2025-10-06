@@ -40,9 +40,17 @@ const generateMockCardTransactions = (card: Omit<Card, 'transactions'>): Transac
     return transactions.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 };
 
-const generateMockCard = (): Card => {
+const cardColors = [
+    'from-indigo-500 to-purple-600',
+    'from-sky-500 to-indigo-500',
+    'from-emerald-500 to-lime-600',
+    'from-pink-500 to-rose-500',
+    'from-amber-500 to-orange-600',
+];
+
+const generateMockCard = (cardTypeParam?: 'Visa' | 'Mastercard'): Card => {
   // FIX: Explicitly typed `cardType` to prevent type widening to `string`.
-  const cardType: 'Visa' | 'Mastercard' = Math.random() > 0.5 ? 'Visa' : 'Mastercard';
+  const cardType: 'Visa' | 'Mastercard' = cardTypeParam || (Math.random() > 0.5 ? 'Visa' : 'Mastercard');
   const cardNumber =
     cardType === 'Visa'
       ? '4' + Array.from({ length: 15 }, () => Math.floor(Math.random() * 10)).join('')
@@ -57,12 +65,14 @@ const generateMockCard = (): Card => {
   const today = new Date();
   const paymentDueDate = new Date(today.getFullYear(), today.getMonth() + 1, 15).toISOString(); // 15th of next month
   const statementBalance = parseFloat((creditBalance * (0.9 + Math.random() * 0.1)).toFixed(2)); // 90-100% of current balance
+  const color = cardColors[Math.floor(Math.random() * cardColors.length)];
 
   const partialCard = {
     cardNumber,
     expiryDate: `${expiryMonth}/${expiryYear}`,
     cvv: String(Math.floor(Math.random() * 900) + 100),
     cardType,
+    color,
     creditLimit,
     creditBalance,
     apr: parseFloat((Math.random() * 15 + 15).toFixed(2)), // e.g., 15% to 30%

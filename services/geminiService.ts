@@ -145,8 +145,9 @@ export const applyForCreditCardFunctionDeclaration: FunctionDeclaration = {
                     employmentStatus: { type: Type.STRING, description: "e.g., Employed, Self-Employed, Unemployed." },
                     employer: { type: Type.STRING, description: "Name of the user's employer. Can be 'N/A'." },
                     annualIncome: { type: Type.NUMBER, description: "The user's total annual income." },
+                    cardType: { type: Type.STRING, description: "The preferred card network, either 'Visa' or 'Mastercard'." },
                 },
-                required: ['address', 'dateOfBirth', 'employmentStatus', 'employer', 'annualIncome']
+                required: ['address', 'dateOfBirth', 'employmentStatus', 'employer', 'annualIncome', 'cardType']
             }
         },
         required: ['applicationDetails'],
@@ -263,7 +264,7 @@ Your capabilities include initiating payments, providing card information, analy
 
 6.  **Credit Card Application**:
     - If the user expresses intent to "apply for a credit card," you MUST use the 'applyForCreditCard' tool.
-    - Before calling the tool, you MUST collect all required information: address, date of birth, employment status, employer, and annual income. You already know the user's name is ${userFullName}, so do not ask for it.
+    - Before calling the tool, you MUST collect all required information: address, date of birth, employment status, employer, annual income, and preferred card type (Visa or Mastercard). You already know the user's name is ${userFullName}, so do not ask for it.
     - Ask for any missing information conversationally.
 
 7.  **Loan Application**:

@@ -64,9 +64,10 @@ export interface CardApplicationDetails {
     employmentStatus: string;
     employer: string;
     annualIncome: number;
+    cardType: 'Visa' | 'Mastercard';
 }
 
-export interface LoanApplicationDetails extends CardApplicationDetails {
+export interface LoanApplicationDetails extends Omit<CardApplicationDetails, 'cardType'> {
     loanAmount: number;
     loanTerm: number;
 }
@@ -104,6 +105,8 @@ interface BankContextType {
     fetchInsights: () => Promise<void>;
     refreshInsights: () => Promise<void>;
     isInsightsLoading: boolean;
+    refreshUserData: () => Promise<void>;
+    isRefreshing: boolean;
     ai: GoogleGenAI;
 }
 
@@ -124,6 +127,7 @@ export default function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [insightsData, setInsightsData] = useState<CachedInsights | null>(null);
     const [isInsightsLoading, setIsInsightsLoading] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     
     const loadUserAndData = async (uid: string) => {
         // FIX: Switched to Firebase v8 syntax.
@@ -240,6 +244,20 @@ export default function App() {
             showToast("Could not load AI insights.", 'error');
         } finally {
             setIsInsightsLoading(false);
+        }
+    };
+
+    const refreshUserData = async () => {
+        if (!currentUser || isRefreshing) return;
+        setIsRefreshing(true);
+        try {
+            await loadUserAndData(currentUser.uid);
+            showToast("Your data has been refreshed.", 'success');
+        } catch (error) {
+            console.error("Failed to refresh user data:", error);
+            showToast("Could not refresh your data.", 'error');
+        } finally {
+            setIsRefreshing(false);
         }
     };
 
@@ -391,7 +409,7 @@ export default function App() {
              return { success: false, message: `We're sorry, ${details.fullName}, but we were unable to approve your credit card application at this time.` };
         }
 
-        const newCard = generateMockCard();
+        const newCard = generateMockCard(details.cardType);
         // FIX: Switched to Firebase v8 syntax.
         await db.collection(`users/${currentUser.uid}/cards`).doc(newCard.cardNumber).set(newCard);
         
@@ -652,7 +670,7 @@ export default function App() {
         showToast("Passkey removed.", 'success');
     };
 
-    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, fetchInsights, refreshInsights, isInsightsLoading, ai: geminiAi };
+    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, fetchInsights, refreshInsights, isInsightsLoading, refreshUserData, isRefreshing, ai: geminiAi };
 
     const screenKey = currentUser ? 'dashboard' : authScreen;
 

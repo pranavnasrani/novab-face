@@ -1,6 +1,6 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BankContext } from '../App';
+import { BankContext, CardApplicationDetails } from '../App';
 import { useTranslation } from '../hooks/useTranslation';
 
 interface ApplicationModalProps {
@@ -21,6 +21,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ isOpen, onCl
     annualIncome: '',
     loanAmount: '10000',
     loanTerm: '36',
+    cardType: 'Visa',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -35,6 +36,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ isOpen, onCl
             annualIncome: '',
             loanAmount: '10000',
             loanTerm: '36',
+            cardType: 'Visa',
         });
         setIsSubmitting(false);
     }
@@ -67,7 +69,8 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ isOpen, onCl
 
     let result;
     if (applicationType === 'Card') {
-        result = await addCardToUser(baseDetails);
+        const cardDetails: CardApplicationDetails = { ...baseDetails, cardType: formData.cardType as 'Visa' | 'Mastercard' };
+        result = await addCardToUser(cardDetails);
     } else {
         const loanDetails = {
             ...baseDetails,
@@ -97,6 +100,17 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({ isOpen, onCl
       <InputField name="fullName" label={t('fullName')} value={formData.fullName} onChange={handleChange} />
       <InputField name="address" label={t('address')} value={formData.address} onChange={handleChange} placeholder={t('addressPlaceholder')} />
       <InputField name="dateOfBirth" label={t('dateOfBirth')} value={formData.dateOfBirth} onChange={handleChange} type="date" />
+      
+      {applicationType === 'Card' && (
+        <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">{t('cardType')}</label>
+            <select name="cardType" value={formData.cardType} onChange={handleChange} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option>Visa</option>
+                <option>Mastercard</option>
+            </select>
+        </div>
+      )}
+
       <div>
         <label className="block text-sm font-medium text-slate-300 mb-1">{t('employmentStatus')}</label>
         <select name="employmentStatus" value={formData.employmentStatus} onChange={handleChange} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">

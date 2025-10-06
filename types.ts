@@ -4,6 +4,7 @@ export interface Card {
   expiryDate: string;
   cvv: string;
   cardType: 'Visa' | 'Mastercard';
+  color: string;
   creditLimit: number;
   creditBalance: number;
   apr: number; // Annual Percentage Rate
