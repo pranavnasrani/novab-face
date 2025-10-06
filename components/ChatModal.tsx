@@ -60,12 +60,18 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const messageId = useRef(0);
   
   const [isListening, setIsListening] = useState(false);
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const inputValueRef = useRef(inputValue);
+  const isVoiceModeRef = useRef(isVoiceMode);
   
   useEffect(() => {
       inputValueRef.current = inputValue;
   }, [inputValue]);
+  
+  useEffect(() => {
+      isVoiceModeRef.current = isVoiceMode;
+  }, [isVoiceMode]);
 
   const handleFunctionCall = async (call: { name?: string, args?: any }): Promise<{ success: boolean; message: string; resultForModel: object }> => {
       if (!call.name) {
@@ -238,6 +244,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         setMessages(prev => [...prev, errorMessage]);
     } finally {
         setIsLoading(false);
+        if (isVoiceModeRef.current) {
+            startListening();
+        }
     }
   };
   
@@ -248,8 +257,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
 
   const toggleListening = () => {
     if (isListening) {
+      setIsVoiceMode(false);
       recognitionRef.current?.abort();
     } else {
+      setIsVoiceMode(true);
       startListening();
     }
   };
@@ -285,6 +296,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         
         if (finalTranscript) {
             handleSendRef.current(finalTranscript);
+        } else {
+            // If recognition ends with no result, exit voice mode.
+            setIsVoiceMode(false);
         }
     };
     
@@ -329,6 +343,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
     } else if (!isOpen && isListening) {
         setIsListening(false);
+        setIsVoiceMode(false);
         recognitionRef.current?.abort();
     }
   }, [isOpen, currentUser, language, contacts, contactsLoaded, isListening, chat]);
@@ -374,6 +389,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
 
   const handleFormSubmit = (e: React.FormEvent) => {
       e.preventDefault();
+      setIsVoiceMode(false);
       handleSend(inputValue);
   }
 
