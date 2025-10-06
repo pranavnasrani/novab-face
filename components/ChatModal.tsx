@@ -59,13 +59,19 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const messageId = useRef(0);
   
-  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [isVoiceSessionActive, setIsVoiceSessionActive] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const isVoiceActiveRef = useRef(isVoiceActive);
+  const isVoiceSessionActiveRef = useRef(isVoiceSessionActive);
+  const inputValueRef = useRef(inputValue);
 
   useEffect(() => {
-    isVoiceActiveRef.current = isVoiceActive;
-  }, [isVoiceActive]);
+    isVoiceSessionActiveRef.current = isVoiceSessionActive;
+  }, [isVoiceSessionActive]);
+  
+  useEffect(() => {
+      inputValueRef.current = inputValue;
+  }, [inputValue]);
 
   const handleFunctionCall = async (call: { name?: string, args?: any }): Promise<{ success: boolean; message: string; resultForModel: object }> => {
       if (!call.name) {
@@ -170,6 +176,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const startListening = () => {
       if (recognitionRef.current) {
           setInputValue('');
+          setIsListening(true);
           recognitionRef.current.start();
       }
   };
@@ -178,7 +185,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       if (!window.speechSynthesis) return;
       const utterance = new SpeechSynthesisUtterance(text);
       
-      // Ensure voices are loaded before selecting one
       const voices = window.speechSynthesis.getVoices();
       if (voices.length > 0) {
         const voice = voices.find(v => v.lang.startsWith(language)) || voices.find(v => v.lang.startsWith('en')) || voices[0];
@@ -186,7 +192,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
             utterance.voice = voice;
         }
       } else {
-          // Fallback if voices are not loaded yet
           window.speechSynthesis.onvoiceschanged = () => {
               const voices = window.speechSynthesis.getVoices();
               const voice = voices.find(v => v.lang.startsWith(language)) || voices.find(v => v.lang.startsWith('en')) || voices[0];
@@ -197,13 +202,12 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       }
 
       utterance.onend = () => {
-          if (isVoiceActiveRef.current) {
+          if (isVoiceSessionActiveRef.current) {
               startListening();
           }
       };
       
       window.speechSynthesis.cancel();
-      // Speak only if voices are already loaded, otherwise the event handler will do it
       if (voices.length > 0) {
           window.speechSynthesis.speak(utterance);
       }
@@ -259,22 +263,22 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         if (finalResponse.text) {
             const aiMessage: Message = { id: messageId.current++, sender: 'ai', text: finalResponse.text };
             setMessages(prev => [...prev, aiMessage]);
-            if (isVoiceActiveRef.current) speak(finalResponse.text);
-        } else if (isVoiceActiveRef.current) {
+            if (isVoiceSessionActiveRef.current) speak(finalResponse.text);
+        } else if (isVoiceSessionActiveRef.current) {
             startListening();
         }
 
       } else {
         const aiResponse: Message = { id: messageId.current++, sender: 'ai', text: response.text };
         setMessages(prev => [...prev, aiResponse]);
-        if (isVoiceActiveRef.current) speak(aiResponse.text);
+        if (isVoiceSessionActiveRef.current) speak(aiResponse.text);
       }
 
     } catch (error) {
         console.error("Error during AI chat:", error);
         const errorMessage: Message = { id: messageId.current++, sender: 'system', text: t('chatError') };
         setMessages(prev => [...prev, errorMessage]);
-        if (isVoiceActiveRef.current) startListening();
+        if (isVoiceSessionActiveRef.current) startListening();
     } finally {
         setIsLoading(false);
     }
@@ -286,18 +290,18 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   });
 
   const toggleVoiceMode = () => {
-    const nextIsVoiceActive = !isVoiceActive;
-    setIsVoiceActive(nextIsVoiceActive);
-    if (nextIsVoiceActive) {
+    const nextIsSessionActive = !isVoiceSessionActive;
+    setIsVoiceSessionActive(nextIsSessionActive);
+    if (nextIsSessionActive) {
         startListening();
     } else {
+        setIsListening(false);
         recognitionRef.current?.abort();
         window.speechSynthesis.cancel();
     }
   };
 
   useEffect(() => {
-    // FIX: Cast window to `any` to access non-standard SpeechRecognition properties, resolving a TypeScript error.
     const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognitionAPI) {
         console.warn("Speech recognition not supported in this browser.");
@@ -323,31 +327,25 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     };
 
     recognition.onend = () => {
-        if (isVoiceActiveRef.current) {
-            setInputValue(currentVal => {
-                const trimmedVal = currentVal.trim();
-                if (trimmedVal) {
-                    handleSendRef.current(trimmedVal);
-                } else {
-                    // If no speech was detected, just start listening again
-                    startListening();
-                }
-                return currentVal; // Return currentVal to avoid issues, though it's about to be cleared
-            });
+        setIsListening(false);
+        const finalTranscript = inputValueRef.current.trim();
+        
+        if (isVoiceSessionActiveRef.current && finalTranscript) {
+            handleSendRef.current(finalTranscript);
         }
     };
     
     recognition.onerror = (event) => {
+        setIsListening(false);
         console.error("Speech recognition error", event.error);
-        if (isVoiceActiveRef.current) {
+        if (isVoiceSessionActiveRef.current) {
             if (event.error === 'no-speech' || event.error === 'audio-capture') {
-                // Silently restart listening if no speech was detected
                 setTimeout(() => {
-                    if (isVoiceActiveRef.current) startListening();
+                    if (isVoiceSessionActiveRef.current) startListening();
                 }, 100);
             } else {
                 showToast(t('voiceError'), 'error');
-                setIsVoiceActive(false);
+                setIsVoiceSessionActive(false);
             }
         }
     };
@@ -357,7 +355,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     return () => {
         recognition.abort();
     }
-  }, [language]);
+  }, [language, showToast, t]);
   
   useEffect(() => {
     const fetchUsers = async () => {
@@ -383,11 +381,13 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         setMessages([{ id: messageId.current++, sender: 'ai', text: t('chatGreeting', { name: currentUser?.name.split(' ')[0] })}]);
         setInputValue('');
         setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
-    } else if (!isOpen) {
-        setChat(null);
-        if (isVoiceActive) toggleVoiceMode(); // Turn off voice mode when closing modal
+    } else if (!isOpen && isVoiceSessionActive) {
+        setIsVoiceSessionActive(false);
+        setIsListening(false);
+        recognitionRef.current?.abort();
+        window.speechSynthesis.cancel();
     }
-  }, [isOpen, currentUser, language, contacts, contactsLoaded]);
+  }, [isOpen, currentUser, language, contacts, contactsLoaded, isVoiceSessionActive, chat]);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -477,7 +477,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                                       key={promptKey}
                                       onClick={() => handleSend(t(promptKey as any))}
                                       className="p-3 text-left bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-300 hover:bg-slate-800 transition-colors duration-200"
-                                      disabled={isVoiceActive}
+                                      disabled={isListening}
                                   >
                                       {t(promptKey as any)}
                                   </button>
@@ -500,7 +500,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                     </div>
                   </div>
                 ))}
-                {isLoading && !isVoiceActive && (
+                {isLoading && !isListening && (
                     <div className="flex items-end gap-2">
                         <div className="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 grid place-items-center"><SparklesIcon className="w-5 h-5 text-indigo-400" /></div>
                         <div className="bg-slate-800 text-slate-200 p-3 rounded-xl">
@@ -519,14 +519,14 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
             <div className="flex-shrink-0 p-4 border-t border-slate-800 bg-slate-950 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               <form onSubmit={handleFormSubmit} className="flex items-center gap-2">
                   <input type="file" accept="image/*" ref={photoInputRef} onChange={handleImageFileChange} className="hidden" />
-                  <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isLoading || isVoiceActive} className="w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50">
+                  <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isLoading || isListening} className="w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50">
                       <CameraIcon className="w-6 h-6" />
                   </button>
-                  <button type="button" onClick={toggleVoiceMode} disabled={isLoading && !isVoiceActive} className={`w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors bg-slate-800 hover:bg-slate-700 disabled:opacity-50 ${isVoiceActive ? 'text-blue-400' : 'text-slate-400'}`}>
+                  <button type="button" onClick={toggleVoiceMode} disabled={isLoading} className={`w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors bg-slate-800 hover:bg-slate-700 disabled:opacity-50 ${isListening ? 'text-blue-400' : 'text-slate-400'}`}>
                       <MicrophoneIcon className="w-6 h-6" />
                   </button>
-                  <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={isVoiceActive ? t('listening') : t('askNova')} className="w-full bg-slate-800 border-transparent rounded-lg px-4 py-3 h-12 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading || isVoiceActive} />
-                  <button type="submit" disabled={isLoading || !inputValue.trim() || isVoiceActive} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-800 disabled:text-slate-500 transition-colors">
+                  <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={isListening ? t('listening') : t('askNova')} className="w-full bg-slate-800 border-transparent rounded-lg px-4 py-3 h-12 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading || isListening} />
+                  <button type="submit" disabled={isLoading || !inputValue.trim() || isVoiceSessionActive} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-800 disabled:text-slate-500 transition-colors">
                       <SendIcon className="w-6 h-6" />
                   </button>
               </form>
