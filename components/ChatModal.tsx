@@ -22,6 +22,68 @@ interface SpeechRecognition {
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
+// Helper to render bold/italic text
+const renderLine = (line: string) => {
+  // Split by bold (**...**) or italic (*...*) markers. The filter(Boolean) removes empty strings from the result.
+  const parts = line.split(/(\*\*.*?\*\*|\*.*?\*)/g).filter(Boolean);
+  return parts.map((part, partIndex) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={partIndex}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith('*') && part.endsWith('*')) {
+      return <em key={partIndex}>{part.slice(1, -1)}</em>;
+    }
+    return part; // Return plain text part
+  });
+};
+
+const MarkdownRenderer: React.FC<{ text: string }> = ({ text }) => {
+  const lines = text.split('\n');
+  const elements: React.ReactNode[] = [];
+  let listType: 'ul' | 'ol' | null = null;
+  let listItems: React.ReactNode[] = [];
+
+  const flushList = () => {
+    if (listItems.length > 0) {
+      const ListComponent = listType === 'ul' ? 'ul' : 'ol';
+      elements.push(
+        <ListComponent key={`list-${elements.length}`} className={`${listType === 'ul' ? 'list-disc' : 'list-decimal'} list-outside pl-5 space-y-1`}>
+          {listItems}
+        </ListComponent>
+      );
+      listItems = [];
+    }
+    listType = null;
+  };
+
+  lines.forEach((line, index) => {
+    const ulMatch = line.match(/^\s*[-*]\s+(.*)/);
+    if (ulMatch) {
+      if (listType !== 'ul') flushList();
+      listType = 'ul';
+      listItems.push(<li key={index}>{renderLine(ulMatch[1])}</li>);
+      return;
+    }
+
+    const olMatch = line.match(/^\s*(\d+)\.\s+(.*)/);
+    if (olMatch) {
+      if (listType !== 'ol') flushList();
+      listType = 'ol';
+      listItems.push(<li key={index}>{renderLine(olMatch[2])}</li>);
+      return;
+    }
+    
+    flushList(); // End any list if the current line is not a list item.
+    if (line.trim()) {
+      elements.push(<p key={index}>{renderLine(line)}</p>); // Render non-empty lines as paragraphs.
+    }
+  });
+
+  flushList(); // Flush any list that extends to the end of the text.
+
+  return <div className="text-sm space-y-2">{elements}</div>;
+};
+
 const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -456,7 +518,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                       msg.sender === 'ai' ? 'bg-slate-800 text-slate-200' :
                       'bg-transparent text-slate-500 text-xs italic w-full text-center'
                     }`}>
-                      <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                      {msg.sender === 'ai' ? (
+                        <MarkdownRenderer text={msg.text} />
+                      ) : (
+                        <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                      )}
                     </div>
                   </div>
                 ))}

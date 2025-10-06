@@ -76,6 +76,11 @@ export interface Passkey {
     created: string;
 }
 
+interface CachedInsights {
+    data: InsightsData;
+    lastUpdated: string;
+}
+
 interface BankContextType {
     currentUser: User | null;
     users: User[]; // Will be empty now, but kept for type safety in components that might use it
@@ -95,8 +100,9 @@ interface BankContextType {
     loginWithPasskey: () => Promise<boolean>;
     removePasskey: (passkeyId: string) => Promise<void>;
     verifyCurrentUserWithPasskey: () => Promise<boolean>;
-    insightsData: InsightsData | null;
+    insightsData: CachedInsights | null;
     fetchInsights: () => Promise<void>;
+    refreshInsights: () => Promise<void>;
     isInsightsLoading: boolean;
     ai: GoogleGenAI;
 }
@@ -108,7 +114,7 @@ type AuthScreen = 'welcome' | 'login' | 'register';
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
 export default function App() {
-    const { language } = useTranslation();
+    const { language, t } = useTranslation();
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [authScreen, setAuthScreen] = useState<AuthScreen>('welcome');
@@ -116,7 +122,7 @@ export default function App() {
     const [isPasskeySupported, setIsPasskeySupported] = useState(false);
     const [passkeys, setPasskeys] = useState<Passkey[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [insightsData, setInsightsData] = useState<InsightsData | null>(null);
+    const [insightsData, setInsightsData] = useState<CachedInsights | null>(null);
     const [isInsightsLoading, setIsInsightsLoading] = useState(false);
     
     const loadUserAndData = async (uid: string) => {
@@ -188,6 +194,27 @@ export default function App() {
         if (insightsData || isInsightsLoading || !currentUser) return;
         setIsInsightsLoading(true);
         try {
+            const insightsRef = db.collection(`users/${currentUser.uid}/insights`).doc('latest');
+            const insightsDoc = await insightsRef.get();
+
+            if (insightsDoc.exists) {
+                setInsightsData(insightsDoc.data() as CachedInsights);
+            } else {
+                // No cached data, so generate it
+                await refreshInsights(true); // Pass flag to prevent redundant loading state changes
+            }
+        } catch (error) {
+            console.error("Failed to fetch insights:", error);
+            showToast(t('notEnoughData'), 'error');
+        } finally {
+            setIsInsightsLoading(false);
+        }
+    };
+
+    const refreshInsights = async (isInitialFetch = false) => {
+        if (isInsightsLoading || !currentUser) return;
+        setIsInsightsLoading(true);
+        try {
             const allUserTransactions = [
                 ...transactions.filter(tx => tx.uid === currentUser.uid),
                 ...currentUser.cards.flatMap(c => c.transactions)
@@ -198,15 +225,23 @@ export default function App() {
             const recentTransactions = allUserTransactions.filter(tx => new Date(tx.timestamp) >= sixtyDaysAgo);
             
             const result = await getComprehensiveInsights(recentTransactions, language);
-            setInsightsData(result);
+            if (result) {
+                const newData: CachedInsights = { data: result, lastUpdated: new Date().toISOString() };
+                await db.collection(`users/${currentUser.uid}/insights`).doc('latest').set(newData);
+                setInsightsData(newData);
+                if (!isInitialFetch) {
+                    showToast("Insights have been refreshed.", 'success');
+                }
+            } else {
+                showToast(t('notEnoughData'), 'error');
+            }
         } catch (error) {
-            console.error("Failed to fetch insights:", error);
+            console.error("Failed to refresh insights:", error);
             showToast("Could not load AI insights.", 'error');
         } finally {
             setIsInsightsLoading(false);
         }
     };
-
 
     const login = async (username: string, password: string): Promise<boolean> => {
         // FIX: Switched to Firebase v8 syntax.
@@ -617,7 +652,7 @@ export default function App() {
         showToast("Passkey removed.", 'success');
     };
 
-    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, fetchInsights, isInsightsLoading, ai: geminiAi };
+    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, fetchInsights, refreshInsights, isInsightsLoading, ai: geminiAi };
 
     const screenKey = currentUser ? 'dashboard' : authScreen;
 
