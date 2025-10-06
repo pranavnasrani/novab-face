@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights } from '../services/geminiService';
 import { BankContext, CardApplicationDetails, LoanApplicationDetails } from '../App';
-import { SparklesIcon, SendIcon, CameraIcon, MicrophoneIcon } from './icons';
+import { SparklesIcon, SendIcon, CameraIcon, MicrophoneIcon, StopCircleIcon } from './icons';
 import { Chat } from '@google/genai';
 import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/firebase';
@@ -60,43 +60,27 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const wasTriggeredByVoice = useRef(false);
   const finalTranscriptRef = useRef('');
 
-  useEffect(() => {
-    const fetchUsers = async () => {
-        if (isOpen && currentUser) {
-            setContactsLoaded(false);
-            const usersRef = db.collection("users");
-            const q = usersRef.where("uid", "!=", currentUser.uid);
-            const querySnapshot = await q.get();
-            const userNames = querySnapshot.docs.map(doc => doc.data().name);
-            setContacts(userNames);
-            setContactsLoaded(true);
-        } else if (!isOpen) {
-            setContacts([]);
-            setContactsLoaded(false);
-        }
-    };
-    fetchUsers();
-  }, [isOpen, currentUser]);
-  
-  useEffect(() => {
-    if (isOpen && currentUser && contactsLoaded && !chat) {
-        messageId.current = 0;
-        setMessages([{ id: messageId.current++, sender: 'ai', text: t('chatGreeting', { name: currentUser?.name.split(' ')[0] })}]);
-        setInputValue('');
-        setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
-    } else if (!isOpen) {
-        setChat(null);
-        if (isRecording) {
-            handleMicRelease();
-        }
-        window.speechSynthesis.cancel();
+  const speakResponse = (text: string) => {
+    if (!('speechSynthesis' in window)) {
+      console.warn('Speech Synthesis not supported');
+      wasTriggeredByVoice.current = false;
+      return;
     }
-  }, [isOpen, currentUser, language, contacts, contactsLoaded]);
-  
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, interimTranscript]);
-
+    const utterance = new SpeechSynthesisUtterance(text);
+    const langMap: Record<string, string> = { en: 'en-US', es: 'es-ES', th: 'th-TH', tl: 'fil-PH' };
+    utterance.lang = langMap[language] || 'en-US';
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      wasTriggeredByVoice.current = false;
+    };
+    utterance.onerror = (e) => {
+      console.error('SpeechSynthesis Error', e);
+      setIsSpeaking(false);
+      wasTriggeredByVoice.current = false;
+    };
+    window.speechSynthesis.speak(utterance);
+  };
 
   const handleFunctionCall = async (call: { name?: string, args?: any }): Promise<{ success: boolean; message: string; resultForModel: object }> => {
       if (!call.name) {
@@ -198,28 +182,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       return { success: (resultForModel as any).success, message: resultMessage, resultForModel };
   };
 
-  const speakResponse = (text: string) => {
-    if (!('speechSynthesis' in window)) {
-      console.warn('Speech Synthesis not supported');
-      wasTriggeredByVoice.current = false;
-      return;
-    }
-    const utterance = new SpeechSynthesisUtterance(text);
-    const langMap: Record<string, string> = { en: 'en-US', es: 'es-ES', th: 'th-TH', tl: 'fil-PH' };
-    utterance.lang = langMap[language] || 'en-US';
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      wasTriggeredByVoice.current = false;
-    };
-    utterance.onerror = (e) => {
-      console.error('SpeechSynthesis Error', e);
-      setIsSpeaking(false);
-      wasTriggeredByVoice.current = false;
-    };
-    window.speechSynthesis.speak(utterance);
-  };
-  
   const handleSend = async (prompt: string) => {
     if (!prompt.trim() || isLoading || !currentUser || !chat) return;
     
@@ -295,6 +257,76 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
+  const recognitionCleanup = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    microphoneStreamRef.current?.getTracks().forEach(track => track.stop());
+    microphoneStreamRef.current = null;
+    audioContextRef.current?.close().catch(e => console.error("Error closing AudioContext", e));
+    audioContextRef.current = null;
+    setMicScale(1);
+
+    // This check ensures we only process speech if the cleanup is for a recording session.
+    if (isRecording) {
+      setIsRecording(false);
+      const finalTranscript = finalTranscriptRef.current.trim();
+      if (finalTranscript) {
+        handleSend(finalTranscript);
+      } else {
+        wasTriggeredByVoice.current = false;
+      }
+    }
+
+    finalTranscriptRef.current = '';
+    setInterimTranscript('');
+    recognitionRef.current = null;
+  };
+  
+  const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop(); // This will trigger the 'onend' event for cleanup.
+    }
+  };
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+        if (isOpen && currentUser) {
+            setContactsLoaded(false);
+            const usersRef = db.collection("users");
+            const q = usersRef.where("uid", "!=", currentUser.uid);
+            const querySnapshot = await q.get();
+            const userNames = querySnapshot.docs.map(doc => doc.data().name);
+            setContacts(userNames);
+            setContactsLoaded(true);
+        } else if (!isOpen) {
+            setContacts([]);
+            setContactsLoaded(false);
+        }
+    };
+    fetchUsers();
+  }, [isOpen, currentUser]);
+  
+  useEffect(() => {
+    if (isOpen && currentUser && contactsLoaded && !chat) {
+        messageId.current = 0;
+        setMessages([{ id: messageId.current++, sender: 'ai', text: t('chatGreeting', { name: currentUser?.name.split(' ')[0] })}]);
+        setInputValue('');
+        setChat(createChatSession(currentUser.name, contacts, language, currentUser.cards, currentUser.loans));
+    } else if (!isOpen) {
+        setChat(null);
+        if (isRecording) {
+            stopRecording();
+        }
+        window.speechSynthesis.cancel();
+    }
+  }, [isOpen, currentUser, language, contacts, contactsLoaded, isRecording]);
+  
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, interimTranscript]);
+
   const handleImageFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -355,11 +387,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     animationFrameRef.current = requestAnimationFrame(visualizeMicInput);
   };
 
-  const handleMicPress = async () => {
-    // FIX: Cast `window` to `any` to access non-standard `SpeechRecognition` and `webkitSpeechRecognition` properties, resolving a TypeScript error.
+  const startRecording = async () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      showToast(t('micAccessDenied'), 'error'); // More specific error could be "Not supported"
+      showToast(t('micAccessDenied'), 'error');
       return;
     }
     
@@ -379,8 +410,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       source.connect(analyserRef.current);
       visualizeMicInput();
 
-      recognitionRef.current = new SpeechRecognition();
-      const recognition = recognitionRef.current;
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
       const langMap: Record<string, string> = { en: 'en-US', es: 'es-ES', th: 'th-TH', tl: 'fil-PH' };
       recognition.lang = langMap[language] || 'en-US';
       recognition.interimResults = true;
@@ -405,40 +436,30 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
         }
       };
       
+      recognition.onspeechend = () => {
+        stopRecording();
+      };
+      
+      recognition.onend = () => {
+        recognitionCleanup();
+      };
+      
       recognition.start();
 
     } catch (err) {
       showToast(t('micAccessDenied'), 'error');
       console.error('Mic access error', err);
+      setIsRecording(false); // Ensure state is reset on error
     }
   };
 
-  const handleMicRelease = () => {
-    if (recognitionRef.current) {
-        recognitionRef.current.stop();
-    }
-    
-    setIsRecording(false);
-    
-    animationFrameRef.current && cancelAnimationFrame(animationFrameRef.current);
-    animationFrameRef.current = null;
-    
-    microphoneStreamRef.current?.getTracks().forEach(track => track.stop());
-    microphoneStreamRef.current = null;
-    
-    audioContextRef.current?.close().catch(e => console.error("Error closing AudioContext", e));
-    audioContextRef.current = null;
-    
-    setMicScale(1);
-
-    const finalTranscript = finalTranscriptRef.current.trim();
-    if (finalTranscript) {
-      handleSend(finalTranscript);
+  const toggleRecording = () => {
+    if (isRecording) {
+      stopRecording();
     } else {
-      wasTriggeredByVoice.current = false;
+      startRecording();
     }
   };
-
 
   return (
     <AnimatePresence>
@@ -467,7 +488,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                         exit={{ opacity: 0 }}
                         className="absolute inset-0 bg-slate-950/95 backdrop-blur-md z-20 flex flex-col items-center justify-center p-4"
                      >
-                        <p className="text-slate-300 text-lg h-16">{interimTranscript}</p>
+                        <p className="text-slate-300 text-lg h-16">{interimTranscript || '...'}</p>
                         <motion.div 
                             animate={{ scale: micScale }}
                             transition={{ type: 'spring', stiffness: 400, damping: 15 }}
@@ -550,14 +571,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                   </button>
                   <button 
                     type="button" 
-                    onMouseDown={handleMicPress}
-                    onMouseUp={handleMicRelease}
-                    onTouchStart={handleMicPress}
-                    onTouchEnd={handleMicRelease}
+                    onClick={toggleRecording}
                     disabled={isLoading} 
-                    className="w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-colors text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 disabled:opacity-50"
+                    className={`w-10 h-12 rounded-lg grid place-items-center flex-shrink-0 transition-all text-slate-400 hover:text-white disabled:opacity-50 ${isRecording ? 'bg-red-500/20 text-red-400' : 'bg-slate-800 hover:bg-slate-700'}`}
                   >
-                      <MicrophoneIcon className="w-6 h-6" />
+                      {isRecording ? <StopCircleIcon className="w-6 h-6"/> : <MicrophoneIcon className="w-6 h-6" />}
                   </button>
                   <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={t('askNova')} className="w-full bg-slate-800 border-transparent rounded-lg px-4 py-3 h-12 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled={isLoading || isRecording} />
                   <button type="submit" disabled={isLoading || !inputValue.trim() || isRecording} className="w-12 h-12 rounded-lg grid place-items-center flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-800 disabled:text-slate-500 transition-colors">
