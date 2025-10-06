@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, FunctionDeclaration, Type, Chat, GenerateContentResponse } from '@google/genai';
 import { Transaction, Card, Loan, InsightsData } from '../types';
 
@@ -216,7 +217,7 @@ export const getSystemInstruction = (userFullName: string, contacts: string[], l
 
     let contactsInstruction;
     if (contacts.length > 0) {
-        contactsInstruction = `The user can transfer money to any other user in the banking system. The 'initiatePayment' tool can find a recipient by their full name, first name, username, account number, email address, or phone number. For convenience, here is a list of registered user names: ${contacts.join(', ')}. If a user specifies a recipient by name and it is ambiguous or not found, ask for a more specific identifier. Do not hallucinate recipient details.`;
+        contactsInstruction = `The user can transfer money to ANY user in the banking system, not just a pre-defined list of contacts. The 'initiatePayment' tool is powerful and can find any recipient by their full name, first name, username, account number, email address, or phone number. To help you, here is a list of some other users in the system: ${contacts.join(', ')}. This list is for convenience and is not exhaustive. If a user specifies a recipient by a name that is ambiguous or not found, ask for a more specific identifier like an account number or username. Do not hallucinate recipient details.`;
     } else {
         contactsInstruction = "There are no other users registered in the system. If the user asks to send money to someone, you must inform them that no recipients are available.";
     }
