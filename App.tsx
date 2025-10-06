@@ -284,10 +284,14 @@ export default function App() {
         }
     };
 
-    const logout = () => {
-        // FIX: Switched to Firebase v8 syntax.
-        auth.signOut();
-        setAuthScreen('welcome');
+    const logout = async () => {
+        try {
+            await auth.signOut();
+            setAuthScreen('welcome');
+        } catch (error) {
+            console.error("Sign out error:", error);
+            showToast("Failed to sign out. Please try again.", 'error');
+        }
     };
 
     const registerUser = async (name: string, username: string, email: string, phone: string, password: string, createPasskey: boolean): Promise<boolean> => {
