@@ -1,5 +1,5 @@
 {
-  "name": "i-dunno-what-im-dpng",
+  "name": "ai-nova-voice-face-id",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -12,8 +12,7 @@
     "@google/genai": "^1.22.0",
     "react-dom": "^19.2.0",
     "react": "^19.2.0",
-    "framer-motion": "^12.23.22",
-    "firebase": "^12.3.0"
+    "framer-motion": "^12.23.22"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

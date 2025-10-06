@@ -61,8 +61,7 @@ export const SettingsScreen = () => {
                     </div>
 
                     <motion.button
-                        // FIX: Wrapped the `registerPasskey` call in an arrow function to prevent passing the event object, resolving a TypeScript type mismatch.
-                        onClick={() => registerPasskey()}
+                        onClick={registerPasskey}
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
                         className="w-full font-bold py-3 rounded-xl transition-all bg-indigo-600 text-white flex items-center justify-center gap-2"

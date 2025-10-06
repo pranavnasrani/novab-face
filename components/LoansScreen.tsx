@@ -61,7 +61,7 @@ export const LoansScreen = () => {
     const activeLoans = currentUser?.loans.filter(l => l.status === 'Active') || [];
 
     return (
-        <div className="relative flex flex-col">
+        <div className="relative flex flex-col h-full">
             <div className="p-4">
                 <h2 className="text-lg font-semibold text-white">{t('yourLoans')}</h2>
             </div>

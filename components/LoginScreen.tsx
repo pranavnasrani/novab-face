@@ -30,7 +30,7 @@ const InputField = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
 );
 
 interface LoginScreenProps {
-  onLogin: (username: string, password: string) => Promise<boolean>;
+  onLogin: (username: string, pin: string) => boolean;
   onBack: () => void;
 }
 
@@ -38,21 +38,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onBack }) => 
   const { t } = useTranslation();
   const { loginWithPasskey, isPasskeySupported } = useContext(BankContext);
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsAuthenticating(true);
-    setError('');
-    const success = await onLogin(username, password);
-    if (!success) {
+    if (!onLogin(username, pin)) {
       setError(t('loginError'));
-      setPassword('');
+      setPin('');
     }
-    // On success, the main App component will handle navigation
-    setIsAuthenticating(false);
   };
   
   const handlePasskeyLogin = async () => {
@@ -60,8 +55,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onBack }) => 
       setError('');
       const success = await loginWithPasskey();
       if (!success) {
-          // Error toasts might be shown from the context, or we can set a local error
-          // For now, we assume context handles it or failure is silent until another attempt
+          // Error toasts are shown from the context, so we just reset state here
       }
       setIsAuthenticating(false);
   };
@@ -127,13 +121,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onBack }) => 
                 <InputField type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('usernamePlaceholderLogin')} disabled={isAuthenticating} />
               </motion.div>
               <motion.div variants={itemVariants}>
-                <InputField type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('password')} disabled={isAuthenticating} />
+                <InputField type="password" value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder="****" disabled={isAuthenticating} />
               </motion.div>
               {error && <p className="text-red-400 text-sm text-center !mt-4">{error}</p>}
               <motion.div variants={itemVariants}>
-                <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-all text-lg disabled:opacity-50" disabled={isAuthenticating}>
-                {isAuthenticating ? t('authenticating') : t('signIn')}
-                </motion.button>
+                <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-all text-lg disabled:opacity-50" disabled={isAuthenticating}>{t('signIn')}</motion.button>
               </motion.div>
             </form>
           </motion.div>

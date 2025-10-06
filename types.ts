@@ -15,7 +15,7 @@ export interface Card {
 
 export interface Loan {
   id: string;
-  uid: string;
+  userId: number;
   loanAmount: number;
   interestRate: number; // Annual percentage
   termMonths: number;
@@ -27,11 +27,12 @@ export interface Loan {
 }
 
 export interface User {
-  uid: string;
+  id: number;
   name: string;
   username: string;
+  pin: string; // 4-digit PIN for simplicity
   balance: number;
-  savingsAccountNumber: string; 
+  savingsAccountNumber: string; // 16-digit account number
   investmentAccountNumber?: string;
   avatarUrl: string;
   cards: Card[];
@@ -42,7 +43,7 @@ export interface User {
 
 export interface Transaction {
   id: string;
-  uid: string;
+  userId: number;
   type: 'credit' | 'debit';
   amount: number;
   description: string;
@@ -50,33 +51,4 @@ export interface Transaction {
   partyName: string;
   category: string; // e.g., 'Groceries', 'Transport', 'Entertainment'
   cardId?: string; // Optional field to link transaction to a card
-}
-
-export interface SpendingBreakdownItem {
-    name: string;
-    value: number;
-}
-
-export interface CategoryChange {
-    category: string;
-    changePercent: number;
-}
-
-export interface SavingOpportunity {
-    suggestion: string;
-    potentialSavings: number;
-}
-
-export interface Subscription {
-    name: string;
-    amount: number;
-}
-
-export interface InsightsData {
-    spendingBreakdown: SpendingBreakdownItem[];
-    overallSpendingChange: number;
-    topCategoryChanges: CategoryChange[];
-    cashFlowForecast: string;
-    savingOpportunities: SavingOpportunity[];
-    subscriptions: Subscription[];
 }
