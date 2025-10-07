@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, FunctionDeclaration, Type, Chat, GenerateContentResponse } from '@google/genai';
 import { Transaction, Card, Loan, InsightsData } from '../types';
 
@@ -193,6 +194,16 @@ export const getSpendingAnalysisFunctionDeclaration: FunctionDeclaration = {
     },
 };
 
+export const getExistingSpendingInsightsFunctionDeclaration: FunctionDeclaration = {
+    name: 'getExistingSpendingInsights',
+    description: 'Retrieves pre-calculated spending insights for the user, such as spending breakdown by category, trends, and financial advice. This is the fastest way to get a general overview of recent spending. Use this tool FIRST for any questions related to spending analysis, spending habits, financial summaries, or advice.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {},
+        required: [],
+    },
+};
+
 export const allFunctionDeclarations = [
     initiatePaymentFunctionDeclaration,
     getCardStatementDetailsFunctionDeclaration,
@@ -202,6 +213,7 @@ export const allFunctionDeclarations = [
     applyForCreditCardFunctionDeclaration,
     applyForLoanFunctionDeclaration,
     getSpendingAnalysisFunctionDeclaration,
+    getExistingSpendingInsightsFunctionDeclaration,
     getAccountTransactionsFunctionDeclaration,
     getAccountBalanceFunctionDeclaration
 ];
@@ -242,8 +254,9 @@ Your capabilities include initiating payments, providing card information, analy
     - ${contactsInstruction}
 
 2.  **Spending Analysis**:
-    - If the user asks "how much did I spend", "what's my spending breakdown", "show my expenses", or similar, you MUST use the 'getSpendingAnalysis' tool.
-    - This tool uses AI to provide a categorical breakdown of their spending from all their accounts for a given period.
+    - For any questions about spending habits, breakdowns, trends, subscriptions, or financial advice (e.g., "how much did I spend", "show my expenses", "any advice for me?"), you MUST FIRST use the 'getExistingSpendingInsights' tool. This tool is very fast as it retrieves a pre-computed analysis.
+    - If 'getExistingSpendingInsights' returns a message that no insights are available, you should THEN use the 'getSpendingAnalysis' tool. Inform the user that since this is the first time, it might take a moment to generate the insights.
+    - Only use 'getSpendingAnalysis' directly if the user asks for a very specific time period that the general insights tool wouldn't cover (e.g., "what did I spend on Amazon in the last 3 days?").
 
 3.  **Card & Account Information**:
     - If the user asks for their "balance," "how much money do I have," or similar, you MUST use the 'getAccountBalance' tool. This provides a full financial overview (savings, card debt, loans).

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createChatSession, extractPaymentDetailsFromImage, getComprehensiveInsights } from '../services/geminiService';
@@ -110,7 +111,7 @@ type Message = {
 };
 
 export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
-  const { currentUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey, showToast, ai } = useContext(BankContext);
+  const { currentUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey, showToast, ai, insightsData } = useContext(BankContext);
   const { t, language } = useTranslation();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -229,7 +230,18 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                   analysisResult.map(item => `- ${item.name}: ${formatCurrency(item.value)}`).join('\n');
               resultForModel = { total, breakdown: analysisResult };
           }
-      }
+      } else if (call.name === 'getExistingSpendingInsights') {
+            if (insightsData?.data) {
+                const insights = insightsData.data;
+                const totalSpending = insights.spendingBreakdown.reduce((sum, item) => sum + item.value, 0);
+                resultMessage = `Here are your latest spending insights:\nYou've spent a total of ${formatCurrency(totalSpending)} recently. The top categories are ${insights.spendingBreakdown.slice(0, 2).map(item => item.name).join(', ')}. Your overall spending has changed by ${insights.overallSpendingChange.toFixed(1)}% compared to the last period. Would you like more details?`;
+                resultForModel = { success: true, insights: insights };
+            } else {
+                resultMessage = "I'm generating your first spending analysis. This might take a moment...";
+                // This message is for the user. Now, we tell the model what to do.
+                resultForModel = { success: false, message: "No cached insights found. Please use the 'getSpendingAnalysis' tool to generate them now." };
+            }
+        }
 
       return { success: (resultForModel as any).success, message: resultMessage, resultForModel };
   };
