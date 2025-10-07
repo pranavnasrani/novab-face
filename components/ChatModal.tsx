@@ -124,6 +124,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const [isListening, setIsListening] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const speechTimeoutRef = useRef<number | null>(null);
   const inputValueRef = useRef(inputValue);
   const isVoiceModeRef = useRef(isVoiceMode);
   
@@ -248,6 +249,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
 
   const startListening = () => {
       if (recognitionRef.current) {
+          if (speechTimeoutRef.current) {
+              clearTimeout(speechTimeoutRef.current);
+              speechTimeoutRef.current = null;
+          }
           setInputValue('');
           setIsListening(true);
           recognitionRef.current.start();
@@ -350,7 +355,16 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     recognition.lang = language;
     recognition.continuous = false;
 
+    const clearSpeechTimeout = () => {
+        if (speechTimeoutRef.current) {
+            clearTimeout(speechTimeoutRef.current);
+            speechTimeoutRef.current = null;
+        }
+    };
+
     recognition.onresult = (event) => {
+        clearSpeechTimeout();
+
         let interimTranscript = '';
         let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -361,9 +375,19 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
             }
         }
         setInputValue(finalTranscript.trim() || interimTranscript);
+        
+        // Fallback to manually stop recognition if browser doesn't automatically.
+        if (event.results[event.results.length - 1].isFinal) {
+             speechTimeoutRef.current = window.setTimeout(() => {
+                if (recognitionRef.current) {
+                    recognitionRef.current.stop();
+                }
+             }, 1200); // 1.2 second pause after a final result.
+        }
     };
 
     recognition.onend = () => {
+        clearSpeechTimeout();
         setIsListening(false);
         const finalTranscript = inputValueRef.current.trim();
         
@@ -376,6 +400,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     };
     
     recognition.onerror = (event) => {
+        clearSpeechTimeout();
         setIsListening(false);
         console.error("Speech recognition error", event.error);
         if (event.error !== 'no-speech' && event.error !== 'aborted') {
@@ -386,6 +411,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     recognitionRef.current = recognition;
 
     return () => {
+        clearSpeechTimeout();
         recognition.abort();
     }
   }, [language, showToast, t]);
