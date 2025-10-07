@@ -1,6 +1,5 @@
 
-
-import { GoogleGenAI, FunctionDeclaration, Type, Chat, GenerateContentResponse } from '@google/ai/generativelanguage';
+import { GoogleGenAI, FunctionDeclaration, Type, Chat, GenerateContentResponse } from '@google/genai';
 import { Transaction, Card, Loan, InsightsData } from '../types';
 
 // FIX: Added a fallback of an empty string to prevent a crash if the API key is not defined.
