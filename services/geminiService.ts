@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, FunctionDeclaration, Type, Chat, GenerateContentResponse } from '@google/genai';
 import { Transaction, Card, Loan, InsightsData } from '../types';
 
@@ -450,44 +451,18 @@ Provide a complete financial analysis in a single JSON object matching the provi
     }
 };
 
-export const translateInsights = async (
-    insightsData: InsightsData, 
-    targetLanguage: 'es' | 'th' | 'tl'
-): Promise<InsightsData | null> => {
-    const langNameMap = {
-        es: 'Spanish',
-        th: 'Thai',
-        tl: 'Tagalog'
-    };
-    const languageName = langNameMap[targetLanguage];
-
-    const prompt = `You are a professional financial translator. Translate all user-facing string values in the following JSON object to ${languageName}.
-    
-    IMPORTANT RULES:
-    1.  Translate the values for keys: 'name', 'category', 'suggestion', and 'cashFlowForecast'.
-    2.  The 'name' key can appear inside objects in the 'spendingBreakdown' and 'subscriptions' arrays.
-    3.  The 'category' key can appear inside objects in the 'topCategoryChanges' array.
-    4.  The 'suggestion' key can appear inside objects in the 'savingOpportunities' array.
-    5.  DO NOT translate JSON keys.
-    6.  DO NOT change any numerical values.
-    7.  Return ONLY the translated JSON object, matching the original structure and schema perfectly.
-
-    Original JSON object (in English):
-    ${JSON.stringify(insightsData, null, 2)}`;
-
+export const generateMultilingualInsights = async (
+    transactions: Transaction[]
+): Promise<{ en: InsightsData | null; th: InsightsData | null; tl: InsightsData | null }> => {
     try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: insightsResponseSchema
-            }
-        });
-        const jsonString = response.text.trim();
-        return JSON.parse(jsonString);
+        const [en, th, tl] = await Promise.all([
+            getComprehensiveInsights(transactions, 'en'),
+            getComprehensiveInsights(transactions, 'th'),
+            getComprehensiveInsights(transactions, 'tl'),
+        ]);
+        return { en, th, tl };
     } catch (error) {
-        console.error("Error translating insights:", error);
-        return null;
+        console.error("Error generating multilingual insights:", error);
+        return { en: null, th: null, tl: null };
     }
 };

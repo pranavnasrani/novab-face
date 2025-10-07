@@ -164,6 +164,8 @@ const translations = {
     notEnoughDataDescription: "Use your account for a few more transactions and check back for your personalized insights.",
     translatingInsights: "Translating to your language...",
     translatingInsightsDescription: "Please wait a moment while Nova translates your financial insights.",
+    insightsNotAvailableTitle: "Insights Unavailable in Your Language",
+    insightsNotAvailableDescription: "Personalized insights are currently available in English, Thai, and Tagalog. Please switch your language in Settings to view them.",
   },
   es: {
     // Welcome/Onboarding
@@ -326,6 +328,8 @@ const translations = {
     notEnoughDataDescription: "Usa tu cuenta para algunas transacciones más y vuelve a consultar tus análisis personalizados.",
     translatingInsights: "Traduciendo a tu idioma...",
     translatingInsightsDescription: "Por favor, espera un momento mientras Nova traduce tus análisis financieros.",
+    insightsNotAvailableTitle: "Análisis no Disponible en tu Idioma",
+    insightsNotAvailableDescription: "Los análisis personalizados están actualmente disponibles en inglés, tailandés y tagalo. Por favor, cambia tu idioma en Ajustes para verlos.",
   },
   th: {
     // Welcome/Onboarding
@@ -479,6 +483,8 @@ const translations = {
     notEnoughDataDescription: "ใช้บัญชีของคุณสำหรับธุรกรรมเพิ่มเติมอีกเล็กน้อย แล้วกลับมาตรวจสอบข้อมูลเชิงลึกส่วนบุคคลของคุณ",
     translatingInsights: "กำลังแปลเป็นภาษาของคุณ...",
     translatingInsightsDescription: "กรุณารอสักครู่ขณะที่ Nova กำลังแปลข้อมูลเชิงลึกทางการเงินของคุณ",
+    insightsNotAvailableTitle: "ข้อมูลเชิงลึกไม่พร้อมใช้งานในภาษาของคุณ",
+    insightsNotAvailableDescription: "ข้อมูลเชิงลึกส่วนบุคคลมีให้บริการในภาษาอังกฤษ ไทย และตากาล็อก กรุณาเปลี่ยนภาษาของคุณในการตั้งค่าเพื่อดูข้อมูล",
   },
   tl: {
     // Welcome/Onboarding
@@ -632,6 +638,8 @@ const translations = {
     notEnoughDataDescription: "Gamitin ang iyong account para sa ilang higit pang mga transaksyon at bumalik para sa iyong personalized na mga insight.",
     translatingInsights: "Isinasalin sa iyong wika...",
     translatingInsightsDescription: "Mangyaring maghintay habang isinasalin ni Nova ang iyong mga insight sa pananalapi.",
+    insightsNotAvailableTitle: "Hindi Available ang mga Insight sa Iyong Wika",
+    insightsNotAvailableDescription: "Ang mga personalized na insight ay kasalukuyang available sa Ingles, Thai, at Tagalog. Pakipalitan ang iyong wika sa Mga Setting para matingnan ang mga ito.",
   }
 };
 

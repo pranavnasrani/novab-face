@@ -5,7 +5,7 @@ import { useTranslation } from '../hooks/useTranslation';
 import { BankContext } from '../App';
 import { DonutChart } from './DonutChart';
 // FIX: Corrected the import name from `TrendingUpIcon` to `ArrowTrendingUpIcon` to match the exported component in `icons.tsx`.
-import { LightbulbIcon, SparklesIcon, ArrowTrendingUpIcon, TrendingDownIcon, PiggyBankIcon, CalendarDaysIcon, RefreshCwIcon } from './icons';
+import { LightbulbIcon, SparklesIcon, ArrowTrendingUpIcon, TrendingDownIcon, PiggyBankIcon, CalendarDaysIcon, RefreshCwIcon, GlobeIcon } from './icons';
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
@@ -24,19 +24,19 @@ const cardVariants: Variants = {
 };
 
 export const InsightsScreen = () => {
-    const { insightsData, fetchInsights, refreshInsights, isInsightsLoading, isTranslatingInsights } = useContext(BankContext);
+    const { insightsData, fetchInsights, refreshInsights, isInsightsLoading, areInsightsAvailableInLanguage } = useContext(BankContext);
     const { t } = useTranslation();
 
     useEffect(() => {
         fetchInsights();
     }, [fetchInsights]);
 
-    if (isTranslatingInsights) {
+    if (!areInsightsAvailableInLanguage && !isInsightsLoading) {
         return (
-             <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3 p-4">
-                <SparklesIcon className="w-12 h-12 text-indigo-400 animate-pulse" />
-                <p className="font-semibold">{t('translatingInsights')}</p>
-                <p className="text-sm text-center">{t('translatingInsightsDescription')}</p>
+            <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-3 p-4">
+                <GlobeIcon className="w-12 h-12" />
+                <h3 className="font-semibold text-lg text-slate-300">{t('insightsNotAvailableTitle')}</h3>
+                <p className="text-sm text-center">{t('insightsNotAvailableDescription')}</p>
             </div>
         );
     }
