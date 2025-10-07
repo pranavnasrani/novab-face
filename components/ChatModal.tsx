@@ -110,6 +110,13 @@ type Message = {
   text: string;
 };
 
+const langCodeMap: Record<string, string> = {
+  en: 'en-US',
+  es: 'es-ES',
+  th: 'th-TH',
+  tl: 'tl-PH',
+};
+
 export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const { currentUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey, showToast, ai, insightsData } = useContext(BankContext);
   const { t, language } = useTranslation();
@@ -352,7 +359,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     
     const recognition = new SpeechRecognitionAPI();
     recognition.interimResults = true;
-    recognition.lang = language;
+    recognition.lang = langCodeMap[language] || language;
     recognition.continuous = false;
 
     const clearSpeechTimeout = () => {
@@ -374,16 +381,15 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                 interimTranscript += event.results[i][0].transcript;
             }
         }
-        setInputValue(finalTranscript.trim() || interimTranscript);
         
-        // Fallback to manually stop recognition if browser doesn't automatically.
-        if (event.results[event.results.length - 1].isFinal) {
-             speechTimeoutRef.current = window.setTimeout(() => {
-                if (recognitionRef.current) {
-                    recognitionRef.current.stop();
-                }
-             }, 1200); // 1.2 second pause after a final result.
-        }
+        const transcriptToSet = finalTranscript.trim() || interimTranscript.trim();
+        setInputValue(transcriptToSet);
+        
+        speechTimeoutRef.current = window.setTimeout(() => {
+            if (recognitionRef.current) {
+                recognitionRef.current.stop();
+            }
+        }, 1200);
     };
 
     recognition.onend = () => {
