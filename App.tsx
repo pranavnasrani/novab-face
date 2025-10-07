@@ -9,7 +9,7 @@ import { RegisterScreen } from './components/DataScreen'; // Repurposed as Regis
 import { CheckCircleIcon, XCircleIcon } from './components/icons';
 import { auth, db } from './services/firebase';
 // FIX: Removed v9 imports that caused "module has no exported member" errors. The logic is now using the v8 SDK syntax provided by the `auth` and `db` exports from firebase.ts.
-import { getComprehensiveInsights, ai as geminiAi } from './services/geminiService';
+import { getComprehensiveInsights, ai as geminiAi, translateInsights } from './services/geminiService';
 import { useTranslation } from './hooks/useTranslation';
 import { GoogleGenAI } from '@google/genai';
 
@@ -80,6 +80,7 @@ export interface Passkey {
 interface CachedInsights {
     data: InsightsData;
     lastUpdated: string;
+    language: 'en' | 'es' | 'th' | 'tl';
 }
 
 interface BankContextType {
@@ -105,6 +106,7 @@ interface BankContextType {
     fetchInsights: () => Promise<void>;
     refreshInsights: () => Promise<void>;
     isInsightsLoading: boolean;
+    isTranslatingInsights: boolean;
     refreshUserData: () => Promise<void>;
     isRefreshing: boolean;
     ai: GoogleGenAI;
@@ -127,6 +129,7 @@ export default function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [insightsData, setInsightsData] = useState<CachedInsights | null>(null);
     const [isInsightsLoading, setIsInsightsLoading] = useState(false);
+    const [isTranslatingInsights, setIsTranslatingInsights] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     
     const loadUserAndData = async (uid: string) => {
@@ -195,17 +198,48 @@ export default function App() {
     };
     
     const fetchInsights = async () => {
-        if (insightsData || isInsightsLoading || !currentUser) return;
+        if (isInsightsLoading || !currentUser) return;
         setIsInsightsLoading(true);
+        setIsTranslatingInsights(false);
+        setInsightsData(null);
+
         try {
-            const insightsRef = db.collection(`users/${currentUser.uid}/insights`).doc('latest');
+            const insightsRef = db.collection(`users/${currentUser.uid}/insights`).doc(`latest_${language}`);
             const insightsDoc = await insightsRef.get();
 
             if (insightsDoc.exists) {
                 setInsightsData(insightsDoc.data() as CachedInsights);
+                setIsInsightsLoading(false);
+                return;
+            }
+
+            const englishInsightsRef = db.collection(`users/${currentUser.uid}/insights`).doc('latest_en');
+            const englishInsightsDoc = await englishInsightsRef.get();
+
+            if (englishInsightsDoc.exists) {
+                const englishInsights = englishInsightsDoc.data() as CachedInsights;
+                if (language === 'en') {
+                    setInsightsData(englishInsights);
+                } else {
+                    setIsTranslatingInsights(true);
+                    const translatedData = await translateInsights(englishInsights.data, language);
+                    setIsTranslatingInsights(false);
+
+                    if (translatedData) {
+                        const newTranslatedInsights: CachedInsights = {
+                            data: translatedData,
+                            lastUpdated: englishInsights.lastUpdated,
+                            language: language,
+                        };
+                        await db.collection(`users/${currentUser.uid}/insights`).doc(`latest_${language}`).set(newTranslatedInsights);
+                        setInsightsData(newTranslatedInsights);
+                    } else {
+                        showToast('Failed to translate insights. Showing English version as fallback.', 'error');
+                        setInsightsData(englishInsights);
+                    }
+                }
             } else {
-                // No cached data, so generate it
-                await refreshInsights(true); // Pass flag to prevent redundant loading state changes
+                await refreshInsights(true);
             }
         } catch (error) {
             console.error("Failed to fetch insights:", error);
@@ -218,6 +252,9 @@ export default function App() {
     const refreshInsights = async (isInitialFetch = false) => {
         if (isInsightsLoading || !currentUser) return;
         setIsInsightsLoading(true);
+        setIsTranslatingInsights(false);
+        setInsightsData(null);
+
         try {
             const allUserTransactions = [
                 ...transactions.filter(tx => tx.uid === currentUser.uid),
@@ -228,13 +265,34 @@ export default function App() {
             sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
             const recentTransactions = allUserTransactions.filter(tx => new Date(tx.timestamp) >= sixtyDaysAgo);
             
-            const result = await getComprehensiveInsights(recentTransactions, language);
+            const result = await getComprehensiveInsights(recentTransactions, 'en');
             if (result) {
-                const newData: CachedInsights = { data: result, lastUpdated: new Date().toISOString() };
-                await db.collection(`users/${currentUser.uid}/insights`).doc('latest').set(newData);
-                setInsightsData(newData);
+                const englishData: CachedInsights = { data: result, lastUpdated: new Date().toISOString(), language: 'en' };
+                await db.collection(`users/${currentUser.uid}/insights`).doc('latest_en').set(englishData);
+
                 if (!isInitialFetch) {
                     showToast("Insights have been refreshed.", 'success');
+                }
+                
+                if (language === 'en') {
+                    setInsightsData(englishData);
+                } else {
+                    setIsTranslatingInsights(true);
+                    const translatedData = await translateInsights(englishData.data, language);
+                    setIsTranslatingInsights(false);
+
+                    if (translatedData) {
+                        const newTranslatedInsights: CachedInsights = {
+                            data: translatedData,
+                            lastUpdated: englishData.lastUpdated,
+                            language: language,
+                        };
+                        await db.collection(`users/${currentUser.uid}/insights`).doc(`latest_${language}`).set(newTranslatedInsights);
+                        setInsightsData(newTranslatedInsights);
+                    } else {
+                        showToast('Failed to translate new insights. Showing English version as fallback.', 'error');
+                        setInsightsData(englishData);
+                    }
                 }
             } else {
                 showToast(t('notEnoughData'), 'error');
@@ -681,7 +739,7 @@ export default function App() {
         showToast("Passkey removed.", 'success');
     };
 
-    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, fetchInsights, refreshInsights, isInsightsLoading, refreshUserData, isRefreshing, ai: geminiAi };
+    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, fetchInsights, refreshInsights, isInsightsLoading, isTranslatingInsights, refreshUserData, isRefreshing, ai: geminiAi };
 
     const screenKey = currentUser ? 'dashboard' : authScreen;
 

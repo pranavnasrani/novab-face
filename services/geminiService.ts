@@ -1,6 +1,6 @@
 
 
-import { GoogleGenAI, FunctionDeclaration, Type, Chat, GenerateContentResponse } from '@google/genai';
+import { GoogleGenAI, FunctionDeclaration, Type, Chat, GenerateContentResponse } from '@google/ai/generativelanguage';
 import { Transaction, Card, Loan, InsightsData } from '../types';
 
 // FIX: Added a fallback of an empty string to prevent a crash if the API key is not defined.
@@ -359,6 +359,51 @@ Return the information as a JSON object. If any piece of information is unclear 
     }
 };
 
+const insightsResponseSchema = {
+    type: Type.OBJECT,
+    properties: {
+        spendingBreakdown: {
+            type: Type.ARRAY,
+            description: 'Categorical breakdown of spending in the last 30 days.',
+            items: {
+                type: Type.OBJECT,
+                properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER } },
+                required: ['name', 'value']
+            }
+        },
+        overallSpendingChange: { type: Type.NUMBER, description: 'Overall percentage change in spending compared to the previous 30 days.' },
+        topCategoryChanges: {
+            type: Type.ARRAY,
+            description: 'Top 2 categories with the largest spending change.',
+            items: {
+                type: Type.OBJECT,
+                properties: { category: { type: Type.STRING }, changePercent: { type: Type.NUMBER } },
+                required: ['category', 'changePercent']
+            }
+        },
+        subscriptions: {
+            type: Type.ARRAY,
+            description: 'Identified recurring monthly subscriptions.',
+            items: {
+                type: Type.OBJECT,
+                properties: { name: { type: Type.STRING }, amount: { type: Type.NUMBER } },
+                required: ['name', 'amount']
+            }
+        },
+        cashFlowForecast: { type: Type.STRING, description: 'A brief, one-sentence forecast of the user\'s cash flow for the next 30 days.' },
+        savingOpportunities: {
+            type: Type.ARRAY,
+            description: 'Two actionable saving tips.',
+            items: {
+                type: Type.OBJECT,
+                properties: { suggestion: { type: Type.STRING }, potentialSavings: { type: Type.NUMBER } },
+                required: ['suggestion', 'potentialSavings']
+            }
+        },
+    },
+    required: ['spendingBreakdown', 'overallSpendingChange', 'topCategoryChanges', 'subscriptions', 'cashFlowForecast', 'savingOpportunities']
+};
+
 export const getComprehensiveInsights = async (transactions: Transaction[], language: 'en' | 'es' | 'th' | 'tl'): Promise<InsightsData | null> => {
     const langNameMap = {
         en: 'English',
@@ -388,58 +433,13 @@ Provide a complete financial analysis in a single JSON object matching the provi
 3.  **subscriptions**: Identify recurring monthly subscriptions from all transactions.
 4.  **financialAdvice**: Analyze all transactions. Identify likely income from large, recurring 'IN' (credit) transactions. Based on income and spending, provide a brief, one-sentence cash flow forecast for the next 30 days. Also, provide two actionable saving opportunity suggestions with estimated monthly savings.`;
 
-    const responseSchema = {
-        type: Type.OBJECT,
-        properties: {
-            spendingBreakdown: {
-                type: Type.ARRAY,
-                description: 'Categorical breakdown of spending in the last 30 days.',
-                items: {
-                    type: Type.OBJECT,
-                    properties: { name: { type: Type.STRING }, value: { type: Type.NUMBER } },
-                    required: ['name', 'value']
-                }
-            },
-            overallSpendingChange: { type: Type.NUMBER, description: 'Overall percentage change in spending compared to the previous 30 days.' },
-            topCategoryChanges: {
-                type: Type.ARRAY,
-                description: 'Top 2 categories with the largest spending change.',
-                items: {
-                    type: Type.OBJECT,
-                    properties: { category: { type: Type.STRING }, changePercent: { type: Type.NUMBER } },
-                    required: ['category', 'changePercent']
-                }
-            },
-            subscriptions: {
-                type: Type.ARRAY,
-                description: 'Identified recurring monthly subscriptions.',
-                items: {
-                    type: Type.OBJECT,
-                    properties: { name: { type: Type.STRING }, amount: { type: Type.NUMBER } },
-                    required: ['name', 'amount']
-                }
-            },
-            cashFlowForecast: { type: Type.STRING, description: 'A brief, one-sentence forecast of the user\'s cash flow for the next 30 days.' },
-            savingOpportunities: {
-                type: Type.ARRAY,
-                description: 'Two actionable saving tips.',
-                items: {
-                    type: Type.OBJECT,
-                    properties: { suggestion: { type: Type.STRING }, potentialSavings: { type: Type.NUMBER } },
-                    required: ['suggestion', 'potentialSavings']
-                }
-            },
-        },
-        required: ['spendingBreakdown', 'overallSpendingChange', 'topCategoryChanges', 'subscriptions', 'cashFlowForecast', 'savingOpportunities']
-    };
-
     try {
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
-                responseSchema: responseSchema
+                responseSchema: insightsResponseSchema
             }
         });
 
@@ -447,6 +447,48 @@ Provide a complete financial analysis in a single JSON object matching the provi
         return JSON.parse(jsonString);
     } catch (error) {
         console.error("Error getting comprehensive insights:", error);
+        return null;
+    }
+};
+
+export const translateInsights = async (
+    insightsData: InsightsData, 
+    targetLanguage: 'es' | 'th' | 'tl'
+): Promise<InsightsData | null> => {
+    const langNameMap = {
+        es: 'Spanish',
+        th: 'Thai',
+        tl: 'Tagalog'
+    };
+    const languageName = langNameMap[targetLanguage];
+
+    const prompt = `You are a professional financial translator. Translate all user-facing string values in the following JSON object to ${languageName}.
+    
+    IMPORTANT RULES:
+    1.  Translate the values for keys: 'name', 'category', 'suggestion', and 'cashFlowForecast'.
+    2.  The 'name' key can appear inside objects in the 'spendingBreakdown' and 'subscriptions' arrays.
+    3.  The 'category' key can appear inside objects in the 'topCategoryChanges' array.
+    4.  The 'suggestion' key can appear inside objects in the 'savingOpportunities' array.
+    5.  DO NOT translate JSON keys.
+    6.  DO NOT change any numerical values.
+    7.  Return ONLY the translated JSON object, matching the original structure and schema perfectly.
+
+    Original JSON object (in English):
+    ${JSON.stringify(insightsData, null, 2)}`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: insightsResponseSchema
+            }
+        });
+        const jsonString = response.text.trim();
+        return JSON.parse(jsonString);
+    } catch (error) {
+        console.error("Error translating insights:", error);
         return null;
     }
 };

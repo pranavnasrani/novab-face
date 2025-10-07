@@ -16,6 +16,8 @@ interface SpeechRecognition {
   lang: string;
   start: () => void;
   abort: () => void;
+  // FIX: Add the missing `stop` method to the `SpeechRecognition` interface definition.
+  stop: () => void;
   onresult: (event: any) => void;
   onend: () => void;
   onerror: (event: any) => void;

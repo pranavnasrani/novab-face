@@ -1,4 +1,5 @@
 
+
 import React, { createContext, useState, useContext, ReactNode, useEffect, PropsWithChildren } from 'react';
 
 const translations = {
@@ -161,6 +162,8 @@ const translations = {
     spendingVsLastMonth: "Overall spending vs. last month",
     notEnoughData: "Not Enough Data",
     notEnoughDataDescription: "Use your account for a few more transactions and check back for your personalized insights.",
+    translatingInsights: "Translating to your language...",
+    translatingInsightsDescription: "Please wait a moment while Nova translates your financial insights.",
   },
   es: {
     // Welcome/Onboarding
@@ -321,6 +324,8 @@ const translations = {
     spendingVsLastMonth: "Gasto total vs. el mes pasado",
     notEnoughData: "No Hay Datos Suficientes",
     notEnoughDataDescription: "Usa tu cuenta para algunas transacciones más y vuelve a consultar tus análisis personalizados.",
+    translatingInsights: "Traduciendo a tu idioma...",
+    translatingInsightsDescription: "Por favor, espera un momento mientras Nova traduce tus análisis financieros.",
   },
   th: {
     // Welcome/Onboarding
@@ -472,6 +477,8 @@ const translations = {
     spendingVsLastMonth: "การใช้จ่ายทั้งหมดเทียบกับเดือนที่แล้ว",
     notEnoughData: "ข้อมูลไม่เพียงพอ",
     notEnoughDataDescription: "ใช้บัญชีของคุณสำหรับธุรกรรมเพิ่มเติมอีกเล็กน้อย แล้วกลับมาตรวจสอบข้อมูลเชิงลึกส่วนบุคคลของคุณ",
+    translatingInsights: "กำลังแปลเป็นภาษาของคุณ...",
+    translatingInsightsDescription: "กรุณารอสักครู่ขณะที่ Nova กำลังแปลข้อมูลเชิงลึกทางการเงินของคุณ",
   },
   tl: {
     // Welcome/Onboarding
@@ -623,6 +630,8 @@ const translations = {
     spendingVsLastMonth: "Kabuuang gastusin vs. nakaraang buwan",
     notEnoughData: "Hindi Sapat ang Datos",
     notEnoughDataDescription: "Gamitin ang iyong account para sa ilang higit pang mga transaksyon at bumalik para sa iyong personalized na mga insight.",
+    translatingInsights: "Isinasalin sa iyong wika...",
+    translatingInsightsDescription: "Mangyaring maghintay habang isinasalin ni Nova ang iyong mga insight sa pananalapi.",
   }
 };
 

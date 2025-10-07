@@ -24,12 +24,22 @@ const cardVariants: Variants = {
 };
 
 export const InsightsScreen = () => {
-    const { insightsData, fetchInsights, refreshInsights, isInsightsLoading } = useContext(BankContext);
+    const { insightsData, fetchInsights, refreshInsights, isInsightsLoading, isTranslatingInsights } = useContext(BankContext);
     const { t } = useTranslation();
 
     useEffect(() => {
         fetchInsights();
     }, [fetchInsights]);
+
+    if (isTranslatingInsights) {
+        return (
+             <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3 p-4">
+                <SparklesIcon className="w-12 h-12 text-indigo-400 animate-pulse" />
+                <p className="font-semibold">{t('translatingInsights')}</p>
+                <p className="text-sm text-center">{t('translatingInsightsDescription')}</p>
+            </div>
+        );
+    }
 
     if (isInsightsLoading && !insightsData) {
         return (
