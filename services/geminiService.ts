@@ -404,15 +404,7 @@ const insightsResponseSchema = {
     required: ['spendingBreakdown', 'overallSpendingChange', 'topCategoryChanges', 'subscriptions', 'cashFlowForecast', 'savingOpportunities']
 };
 
-export const getComprehensiveInsights = async (transactions: Transaction[], language: 'en' | 'es' | 'th' | 'tl'): Promise<InsightsData | null> => {
-    const langNameMap = {
-        en: 'English',
-        es: 'Spanish',
-        th: 'Thai',
-        tl: 'Tagalog'
-    };
-    const languageName = langNameMap[language];
-    
+export const getComprehensiveInsights = async (transactions: Transaction[]): Promise<InsightsData | null> => {
     // Ensure there are enough transactions to analyze
     if (transactions.filter(tx => tx.type === 'debit').length < 3) {
         return null;
@@ -422,7 +414,7 @@ export const getComprehensiveInsights = async (transactions: Transaction[], lang
         .map(tx => `${tx.type === 'credit' ? 'IN' : 'OUT'}: $${tx.amount.toFixed(2)} for "${tx.description}" on ${new Date(tx.timestamp).toLocaleDateString()}`)
         .join('\n');
 
-    const prompt = `You are an expert financial analyst named Nova. The user's language is ${languageName}. Today is ${new Date().toLocaleDateString()}. 'This month' means the last 30 days from today. 'Last month' means the 30 days prior to that. All monetary values must be numbers. All text, including category names and suggestions, MUST be in ${languageName}.
+    const prompt = `You are an expert financial analyst named Nova. Today is ${new Date().toLocaleDateString()}. 'This month' means the last 30 days from today. 'Last month' means the 30 days prior to that. All monetary values must be numbers. All text, including category names and suggestions, MUST be in English.
 
 Here are the user's transactions for the last 60 days:
 ${transactionList}
@@ -447,42 +439,6 @@ Provide a complete financial analysis in a single JSON object matching the provi
         return JSON.parse(jsonString);
     } catch (error) {
         console.error("Error getting comprehensive insights:", error);
-        return null;
-    }
-};
-
-export const translateInsights = async (
-    insights: InsightsData,
-    language: 'es' | 'th' | 'tl'
-): Promise<InsightsData | null> => {
-    const langNameMap = {
-        es: 'Spanish',
-        th: 'Thai',
-        tl: 'Tagalog'
-    };
-    const languageName = langNameMap[language];
-
-    const prompt = `Translate the following JSON financial insights object into ${languageName}.
-Translate all user-facing string values. This includes the 'name' in 'spendingBreakdown' items, 'category' in 'topCategoryChanges' items, the 'cashFlowForecast' string, and the 'suggestion' in 'savingOpportunities' items.
-Maintain the exact JSON structure and all numeric values. The entire response must be a single, valid JSON object that conforms to the provided schema.
-
-JSON to translate:
-${JSON.stringify(insights, null, 2)}
-`;
-
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: insightsResponseSchema
-            }
-        });
-        const jsonString = response.text.trim();
-        return JSON.parse(jsonString);
-    } catch (error) {
-        console.error(`Error translating insights to ${languageName}:`, error);
         return null;
     }
 };

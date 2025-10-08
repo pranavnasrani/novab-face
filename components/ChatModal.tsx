@@ -229,7 +229,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
           resultForModel = result;
       } else if (call.name === 'getSpendingAnalysis') {
           const allUserTransactions = [ ...transactions, ...currentUser.cards.flatMap(c => c.transactions) ];
-          const analysisResultObject = await getComprehensiveInsights(allUserTransactions, language);
+          // FIX: Removed the extra `language` argument to match the function definition.
+          const analysisResultObject = await getComprehensiveInsights(allUserTransactions);
           if (!analysisResultObject || analysisResultObject.spendingBreakdown.length === 0) {
                resultMessage = "You have no spending data to analyze for this period.";
                resultForModel = { total: 0, breakdown: [] };

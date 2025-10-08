@@ -24,36 +24,14 @@ const cardVariants: Variants = {
 };
 
 export const InsightsScreen = () => {
-    const { insightsData, fetchInsights, refreshInsights, isInsightsLoading, isTranslating, areInsightsAvailableInLanguage } = useContext(BankContext);
-    const { t, language } = useTranslation();
+    const { insightsData, fetchInsights, refreshInsights, isInsightsLoading } = useContext(BankContext);
+    const { t } = useTranslation();
 
     useEffect(() => {
-        // This effect runs when the component mounts or the language changes.
-        // `fetchInsights` handles getting the correct data, either from cache or by translating.
         fetchInsights();
-    }, [language, fetchInsights]);
+    }, [fetchInsights]);
 
-    if (!areInsightsAvailableInLanguage && !isInsightsLoading) {
-        return (
-            <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-3 p-4">
-                <GlobeIcon className="w-12 h-12" />
-                <h3 className="font-semibold text-lg text-slate-300">{t('insightsNotAvailableTitle')}</h3>
-                <p className="text-sm text-center">{t('insightsNotAvailableDescription')}</p>
-            </div>
-        );
-    }
-
-    if (isTranslating) {
-        return (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3 p-4">
-                <GlobeIcon className="w-12 h-12 text-indigo-400 animate-pulse" />
-                <p className="font-semibold">{t('translatingInsights')}</p>
-                <p className="text-sm text-center">{t('translatingInsightsDescription')}</p>
-            </div>
-        );
-    }
-
-    if (isInsightsLoading && !insightsData) {
+    if (isInsightsLoading) {
         return (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3 p-4">
                 <SparklesIcon className="w-12 h-12 text-indigo-400 animate-pulse" />
