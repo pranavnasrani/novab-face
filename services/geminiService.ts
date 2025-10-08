@@ -442,3 +442,32 @@ Provide a complete financial analysis in a single JSON object matching the provi
         return null;
     }
 };
+
+export const translateInsights = async (insights: InsightsData, targetLanguageName: string): Promise<InsightsData | null> => {
+    const prompt = `You are a helpful translation assistant. Translate all user-facing string values in the following JSON object to ${targetLanguageName}.
+- Do not translate JSON keys.
+- Do not change the JSON structure.
+- Do not alter any numerical values.
+- Maintain the exact same JSON format for your response.
+
+Here is the JSON object:
+
+${JSON.stringify(insights, null, 2)}`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: insightsResponseSchema
+            }
+        });
+
+        const jsonString = response.text.trim();
+        return JSON.parse(jsonString);
+    } catch (error) {
+        console.error(`Error translating insights to ${targetLanguageName}:`, error);
+        return null;
+    }
+};
