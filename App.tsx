@@ -102,7 +102,7 @@ interface BankContextType {
     removePasskey: (passkeyId: string) => Promise<void>;
     verifyCurrentUserWithPasskey: () => Promise<boolean>;
     insightsData: CachedInsight | null;
-    fetchInsights: () => Promise<void>;
+    loadOrGenerateInsights: () => Promise<void>;
     refreshInsights: () => Promise<void>;
     isInsightsLoading: boolean;
     refreshUserData: () => Promise<void>;
@@ -194,8 +194,11 @@ export default function App() {
         }, 4000);
     };
     
-    const fetchInsights = async () => {
+    const loadOrGenerateInsights = async () => {
         if (isInsightsLoading || !currentUser) return;
+        
+        // Don't re-run if we already have the data in the state for this session
+        if (insightsData) return;
     
         setIsInsightsLoading(true);
         setInsightsData(null);
@@ -206,10 +209,33 @@ export default function App() {
     
             if (insightsDoc.exists) {
                 setInsightsData(insightsDoc.data() as CachedInsight);
+            } else {
+                // If not in DB, generate them
+                const allUserTransactions = [
+                    ...transactions.filter(tx => tx.uid === currentUser.uid),
+                    ...currentUser.cards.flatMap(c => c.transactions)
+                ];
+                
+                const sixtyDaysAgo = new Date();
+                sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+                const recentTransactions = allUserTransactions.filter(tx => new Date(tx.timestamp) >= sixtyDaysAgo);
+                
+                const newInsights = await getComprehensiveInsights(recentTransactions);
+
+                if (newInsights) {
+                    const now = new Date().toISOString();
+                    const insightsToCache: CachedInsight = { data: newInsights, lastUpdated: now };
+                    
+                    await insightsRef.set(insightsToCache);
+                    setInsightsData(insightsToCache);
+                } else {
+                    setInsightsData(null);
+                }
             }
         } catch (error) {
-            console.error("Failed to fetch insights:", error);
+            console.error("Failed to load or generate insights:", error);
             showToast(t('notEnoughData'), 'error');
+            setInsightsData(null);
         } finally {
             setIsInsightsLoading(false);
         }
@@ -230,14 +256,14 @@ export default function App() {
             sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
             const recentTransactions = allUserTransactions.filter(tx => new Date(tx.timestamp) >= sixtyDaysAgo);
             
-            const englishResult = await getComprehensiveInsights(recentTransactions);
+            const newInsights = await getComprehensiveInsights(recentTransactions);
 
-            if (englishResult) {
+            if (newInsights) {
                 const now = new Date().toISOString();
-                const englishData: CachedInsight = { data: englishResult, lastUpdated: now };
+                const insightsToCache: CachedInsight = { data: newInsights, lastUpdated: now };
                 
-                await db.collection(`users/${currentUser.uid}/insights`).doc('latest').set(englishData);
-                setInsightsData(englishData);
+                await db.collection(`users/${currentUser.uid}/insights`).doc('latest').set(insightsToCache);
+                setInsightsData(insightsToCache);
                 showToast("Insights have been refreshed.", 'success');
 
             } else {
@@ -687,7 +713,7 @@ export default function App() {
         showToast("Passkey removed.", 'success');
     };
 
-    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, fetchInsights, refreshInsights, isInsightsLoading, refreshUserData, isRefreshing, ai: geminiAi };
+    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, loadOrGenerateInsights, refreshInsights, isInsightsLoading, refreshUserData, isRefreshing, ai: geminiAi };
 
     const screenKey = currentUser ? 'dashboard' : authScreen;
 

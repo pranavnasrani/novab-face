@@ -24,12 +24,12 @@ const cardVariants: Variants = {
 };
 
 export const InsightsScreen = () => {
-    const { insightsData, fetchInsights, refreshInsights, isInsightsLoading } = useContext(BankContext);
+    const { insightsData, loadOrGenerateInsights, refreshInsights, isInsightsLoading } = useContext(BankContext);
     const { t } = useTranslation();
 
     useEffect(() => {
-        fetchInsights();
-    }, [fetchInsights]);
+        loadOrGenerateInsights();
+    }, [loadOrGenerateInsights]);
 
     if (isInsightsLoading) {
         return (
