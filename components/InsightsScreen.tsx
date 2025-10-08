@@ -25,13 +25,15 @@ const cardVariants: Variants = {
 
 export const InsightsScreen = () => {
     const { insightsData, loadOrGenerateInsights, refreshInsights, isInsightsLoading } = useContext(BankContext);
-    const { t } = useTranslation();
+    const { t, language } = useTranslation();
 
     useEffect(() => {
         if (!insightsData) {
             loadOrGenerateInsights();
         }
     }, [loadOrGenerateInsights, insightsData]);
+
+    const data = insightsData?.data?.[language];
 
     if (isInsightsLoading) {
         return (
@@ -43,7 +45,7 @@ export const InsightsScreen = () => {
         );
     }
     
-    if (!insightsData?.data) {
+    if (!data) {
          return (
             <div className="flex flex-col h-full">
                 <div className="p-4 flex justify-between items-center">
@@ -66,7 +68,6 @@ export const InsightsScreen = () => {
         );
     }
     
-    const data = insightsData.data;
 
     return (
         <div className="p-4 flex flex-col gap-6 text-white">

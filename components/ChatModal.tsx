@@ -120,7 +120,7 @@ const langCodeMap: Record<string, string> = {
 };
 
 export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
-  const { currentUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey, showToast, ai, insightsData } = useContext(BankContext);
+  const { currentUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, transactions, verifyCurrentUserWithPasskey, showToast, ai, insightsData, loadOrGenerateInsights } = useContext(BankContext);
   const { t, language } = useTranslation();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -228,9 +228,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
           resultMessage = result.message;
           resultForModel = result;
       } else if (call.name === 'getSpendingAnalysis') {
-          const allUserTransactions = [ ...transactions, ...currentUser.cards.flatMap(c => c.transactions) ];
-          // FIX: Removed the extra `language` argument to match the function definition.
-          const analysisResultObject = await getComprehensiveInsights(allUserTransactions);
+          resultMessage = "I'm generating your first spending analysis. This might take a moment...";
+          const cachedInsights = await loadOrGenerateInsights();
+          const analysisResultObject = cachedInsights?.data?.[language];
+
           if (!analysisResultObject || analysisResultObject.spendingBreakdown.length === 0) {
                resultMessage = "You have no spending data to analyze for this period.";
                resultForModel = { total: 0, breakdown: [] };
@@ -242,8 +243,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
               resultForModel = { total, breakdown: analysisResult };
           }
       } else if (call.name === 'getExistingSpendingInsights') {
-            if (insightsData?.data) {
-                const insights = insightsData.data;
+            const insightsForCurrentLanguage = insightsData?.data?.[language];
+            if (insightsForCurrentLanguage) {
+                const insights = insightsForCurrentLanguage;
                 const totalSpending = insights.spendingBreakdown.reduce((sum, item) => sum + item.value, 0);
                 resultMessage = `Here are your latest spending insights:\nYou've spent a total of ${formatCurrency(totalSpending)} recently. The top categories are ${insights.spendingBreakdown.slice(0, 2).map(item => item.name).join(', ')}. Your overall spending has changed by ${insights.overallSpendingChange.toFixed(1)}% compared to the last period. Would you like more details?`;
                 resultForModel = { success: true, insights: insights };

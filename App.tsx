@@ -76,8 +76,8 @@ export interface Passkey {
     created: string;
 }
 
-interface CachedInsight {
-    data: InsightsData;
+export interface CachedInsight {
+    data: Record<string, InsightsData>;
     lastUpdated: string;
 }
 
@@ -101,7 +101,7 @@ interface BankContextType {
     removePasskey: (passkeyId: string) => Promise<void>;
     verifyCurrentUserWithPasskey: () => Promise<boolean>;
     insightsData: CachedInsight | null;
-    loadOrGenerateInsights: () => Promise<void>;
+    loadOrGenerateInsights: () => Promise<CachedInsight | null>;
     refreshInsights: () => Promise<void>;
     isInsightsLoading: boolean;
     refreshUserData: () => Promise<void>;
@@ -193,8 +193,8 @@ export default function App() {
         }, 4000);
     };
     
-    const loadOrGenerateInsights = useCallback(async () => {
-        if (isInsightsLoading || !currentUser) return;
+    const loadOrGenerateInsights = useCallback(async (): Promise<CachedInsight | null> => {
+        if (isInsightsLoading || !currentUser) return null;
     
         setIsInsightsLoading(true);
     
@@ -203,7 +203,9 @@ export default function App() {
             const insightsDoc = await insightsRef.get();
     
             if (insightsDoc.exists) {
-                setInsightsData(insightsDoc.data() as CachedInsight);
+                const cachedData = insightsDoc.data() as CachedInsight;
+                setInsightsData(cachedData);
+                return cachedData;
             } else {
                 const allUserTransactions = [
                     ...transactions.filter(tx => tx.uid === currentUser.uid),
@@ -220,13 +222,16 @@ export default function App() {
                     const newCachedInsights: CachedInsight = { data: newInsightsData, lastUpdated: now };
                     await insightsRef.set(newCachedInsights);
                     setInsightsData(newCachedInsights);
+                    return newCachedInsights;
                 } else {
                     setInsightsData(null);
+                    return null;
                 }
             }
         } catch (error) {
             console.error("Failed to load or generate insights:", error);
             showToast(t('notEnoughData'), 'error');
+            return null;
         } finally {
             setIsInsightsLoading(false);
         }

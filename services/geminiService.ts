@@ -254,8 +254,8 @@ Your capabilities include initiating payments, providing card information, analy
     - ${contactsInstruction}
 
 2.  **Spending Analysis**:
-    - For any questions about spending habits, breakdowns, trends, subscriptions, or financial advice (e.g., "how much did I spend", "show my expenses", "any advice for me?"), you MUST FIRST use the 'getExistingSpendingInsights' tool. This tool is very fast as it retrieves a pre-computed analysis.
-    - If 'getExistingSpendingInsights' returns a message that no insights are available, you should THEN use the 'getSpendingAnalysis' tool. Inform the user that since this is the first time, it might take a moment to generate the insights.
+    - For any questions about spending habits, breakdowns, trends, subscriptions, or financial advice (e.g., "how much did I spend", "show my expenses", "any advice for me?"), you MUST FIRST use the 'getExistingSpendingInsights' tool. This tool is very fast as it retrieves a pre-computed analysis in the user's current language (${langName}).
+    - If 'getExistingSpendingInsights' returns a message that no insights are available, you should THEN use the 'getSpendingAnalysis' tool. Inform the user that since this is the first time, it will generate insights in all supported languages and might take a moment.
     - Only use 'getSpendingAnalysis' directly if the user asks for a very specific time period that the general insights tool wouldn't cover (e.g., "what did I spend on Amazon in the last 3 days?").
 
 3.  **Card & Account Information**:
@@ -359,7 +359,7 @@ Return the information as a JSON object. If any piece of information is unclear 
     }
 };
 
-const insightsResponseSchema = {
+const singleLanguageInsightsSchema = {
     type: Type.OBJECT,
     properties: {
         spendingBreakdown: {
@@ -404,7 +404,18 @@ const insightsResponseSchema = {
     required: ['spendingBreakdown', 'overallSpendingChange', 'topCategoryChanges', 'subscriptions', 'cashFlowForecast', 'savingOpportunities']
 };
 
-export const getComprehensiveInsights = async (transactions: Transaction[]): Promise<InsightsData | null> => {
+const insightsResponseSchema = {
+    type: Type.OBJECT,
+    properties: {
+        en: singleLanguageInsightsSchema,
+        es: singleLanguageInsightsSchema,
+        th: singleLanguageInsightsSchema,
+        tl: singleLanguageInsightsSchema,
+    },
+    required: ['en', 'es', 'th', 'tl'],
+};
+
+export const getComprehensiveInsights = async (transactions: Transaction[]): Promise<Record<string, InsightsData> | null> => {
     // Ensure there are enough transactions to analyze
     if (transactions.filter(tx => tx.type === 'debit').length < 3) {
         return null;
@@ -414,13 +425,16 @@ export const getComprehensiveInsights = async (transactions: Transaction[]): Pro
         .map(tx => `${tx.type === 'credit' ? 'IN' : 'OUT'}: $${tx.amount.toFixed(2)} for "${tx.description}" on ${new Date(tx.timestamp).toLocaleDateString()}`)
         .join('\n');
 
-    const prompt = `You are an expert financial analyst named Nova. Today is ${new Date().toLocaleDateString()}. 'This month' means the last 30 days from today. 'Last month' means the 30 days prior to that. All monetary values must be numbers. All text, including category names and suggestions, MUST be in English.
+    const prompt = `You are an expert financial analyst named Nova. Today is ${new Date().toLocaleDateString()}. 'This month' means the last 30 days from today. 'Last month' means the 30 days prior to that. All monetary values must be numbers.
 
 Here are the user's transactions for the last 60 days:
 ${transactionList}
 
-Provide a complete financial analysis in a single JSON object matching the provided schema. The analysis must include:
-1.  **spendingBreakdown**: Group all 'OUT' (debit) transactions from 'this month' into meaningful categories (e.g., 'Food', 'Shopping', 'Transport'). Sum the total for each category.
+Provide a complete financial analysis in a single JSON object matching the provided schema. The object must contain four top-level keys: "en", "es", "th", and "tl". 
+For each language key, provide the full analysis. All text within a language key's object (like category names, suggestions, forecasts) MUST be in that specific language (en for English, es for Spanish, th for Thai, tl for Tagalog).
+
+For each language, the analysis must include:
+1.  **spendingBreakdown**: Group all 'OUT' (debit) transactions from 'this month' into meaningful categories. Sum the total for each category.
 2.  **spendingTrend**: Compare total spending for 'this month' vs 'last month'. Calculate the overall percentage change. Find the top 2 categories with the biggest percentage change (positive or negative).
 3.  **subscriptions**: Identify recurring monthly subscriptions from all transactions.
 4.  **financialAdvice**: Analyze all transactions. Identify likely income from large, recurring 'IN' (credit) transactions. Based on income and spending, provide a brief, one-sentence cash flow forecast for the next 30 days. Also, provide two actionable saving opportunity suggestions with estimated monthly savings.`;
