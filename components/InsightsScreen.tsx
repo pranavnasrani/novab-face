@@ -24,22 +24,14 @@ const cardVariants: Variants = {
 };
 
 export const InsightsScreen = () => {
-    const { insightsData, loadOrGenerateInsights, refreshInsights, isInsightsLoading, isTranslating } = useContext(BankContext);
-    const { t, language } = useTranslation();
+    const { insightsData, loadOrGenerateInsights, refreshInsights, isInsightsLoading } = useContext(BankContext);
+    const { t } = useTranslation();
 
     useEffect(() => {
-        loadOrGenerateInsights();
-    }, [loadOrGenerateInsights, language]);
-
-    if (isTranslating) {
-        return (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3 p-4">
-                <GlobeIcon className="w-12 h-12 text-indigo-400 animate-pulse" />
-                <p className="font-semibold">{t('translatingInsights')}</p>
-                <p className="text-sm text-center">{t('translatingInsightsDescription')}</p>
-            </div>
-        );
-    }
+        if (!insightsData) {
+            loadOrGenerateInsights();
+        }
+    }, [loadOrGenerateInsights, insightsData]);
 
     if (isInsightsLoading) {
         return (

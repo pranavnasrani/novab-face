@@ -8,8 +8,7 @@ import { WelcomeScreen } from './components/OnboardingScreen'; // Repurposed as 
 import { RegisterScreen } from './components/DataScreen'; // Repurposed as RegisterScreen
 import { CheckCircleIcon, XCircleIcon } from './components/icons';
 import { auth, db } from './services/firebase';
-// FIX: Removed v9 imports that caused "module has no exported member" errors. The logic is now using the v8 SDK syntax provided by the `auth` and `db` exports from firebase.ts.
-import { getComprehensiveInsights, ai as geminiAi, translateInsights } from './services/geminiService';
+import { getComprehensiveInsights, ai as geminiAi } from './services/geminiService';
 import { useTranslation } from './hooks/useTranslation';
 import { GoogleGenAI } from '@google/genai';
 
@@ -105,7 +104,6 @@ interface BankContextType {
     loadOrGenerateInsights: () => Promise<void>;
     refreshInsights: () => Promise<void>;
     isInsightsLoading: boolean;
-    isTranslating: boolean;
     refreshUserData: () => Promise<void>;
     isRefreshing: boolean;
     ai: GoogleGenAI;
@@ -128,7 +126,6 @@ export default function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [insightsData, setInsightsData] = useState<CachedInsight | null>(null);
     const [isInsightsLoading, setIsInsightsLoading] = useState(false);
-    const [isTranslating, setIsTranslating] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     
     const loadUserAndData = async (uid: string) => {
@@ -199,31 +196,15 @@ export default function App() {
     const loadOrGenerateInsights = useCallback(async () => {
         if (isInsightsLoading || !currentUser) return;
     
-        setInsightsData(null);
         setIsInsightsLoading(true);
-        setIsTranslating(false);
     
         try {
-            // Step 1: Check for cached insights in the target language.
-            const insightsDocId = language === 'en' ? 'latest' : `latest_${language}`;
-            const insightsRef = db.collection(`users/${currentUser.uid}/insights`).doc(insightsDocId);
+            const insightsRef = db.collection(`users/${currentUser.uid}/insights`).doc('latest');
             const insightsDoc = await insightsRef.get();
     
             if (insightsDoc.exists) {
                 setInsightsData(insightsDoc.data() as CachedInsight);
-                return; // Success: found cached data in the correct language.
-            }
-    
-            // --- Cache miss ---
-            // Step 2: Ensure we have the base English insights, generating them if necessary.
-            let englishInsights: CachedInsight | null = null;
-            const englishInsightsRef = db.collection(`users/${currentUser.uid}/insights`).doc('latest');
-            const englishInsightsDoc = await englishInsightsRef.get();
-    
-            if (englishInsightsDoc.exists) {
-                englishInsights = englishInsightsDoc.data() as CachedInsight;
             } else {
-                // Generate English insights as they don't exist.
                 const allUserTransactions = [
                     ...transactions.filter(tx => tx.uid === currentUser.uid),
                     ...currentUser.cards.flatMap(c => c.transactions)
@@ -236,55 +217,26 @@ export default function App() {
     
                 if (newInsightsData) {
                     const now = new Date().toISOString();
-                    englishInsights = { data: newInsightsData, lastUpdated: now };
-                    await englishInsightsRef.set(englishInsights);
-                }
-            }
-            
-            // If we still don't have English insights (e.g., not enough data), we can't proceed.
-            if (!englishInsights) {
-                setInsightsData(null);
-                return;
-            }
-    
-            // Step 3: Use the English insights.
-            if (language === 'en') {
-                // The request was for English, and we just fetched/generated it.
-                setInsightsData(englishInsights);
-            } else {
-                // The request was for another language. Translate from English.
-                setIsTranslating(true);
-                const langNameMap: Record<string, string> = { es: 'Spanish', th: 'Thai', tl: 'Tagalog' };
-                const targetLanguageName = langNameMap[language];
-    
-                const translatedData = await translateInsights(englishInsights.data, targetLanguageName);
-    
-                if (translatedData) {
-                    const translatedInsights: CachedInsight = { data: translatedData, lastUpdated: englishInsights.lastUpdated };
-                    await insightsRef.set(translatedInsights); // Cache the new translation.
-                    setInsightsData(translatedInsights);
+                    const newCachedInsights: CachedInsight = { data: newInsightsData, lastUpdated: now };
+                    await insightsRef.set(newCachedInsights);
+                    setInsightsData(newCachedInsights);
                 } else {
-                    // If translation fails, show an error and set data to null.
-                    showToast(`Failed to translate insights to ${targetLanguageName}.`, 'error');
                     setInsightsData(null);
                 }
             }
-    
         } catch (error) {
             console.error("Failed to load or generate insights:", error);
             showToast(t('notEnoughData'), 'error');
-            setInsightsData(null);
         } finally {
             setIsInsightsLoading(false);
-            setIsTranslating(false);
         }
-    }, [currentUser, language, transactions, t, showToast]);
+    }, [currentUser, transactions, isInsightsLoading, showToast, t]);
 
     const refreshInsights = useCallback(async () => {
         if (isInsightsLoading || !currentUser) return;
     
         try {
-            // Clear all cached insights to force regeneration/translation
+            // Clear all cached insights to force regeneration
             const insightsCollectionRef = db.collection(`users/${currentUser.uid}/insights`);
             const snapshot = await insightsCollectionRef.get();
             if (!snapshot.empty) {
@@ -293,18 +245,16 @@ export default function App() {
                 await batch.commit();
             }
     
-            // This will now handle everything, including showing the loading state
+            setInsightsData(null); // Clear local data immediately
             await loadOrGenerateInsights();
             showToast("Insights are being refreshed.", 'success');
     
         } catch (error) {        
             console.error("Failed to refresh insights:", error);
             showToast("Could not refresh AI insights.", 'error');
-            // Make sure loading state is off on failure
             setIsInsightsLoading(false); 
-            setIsTranslating(false);
         }
-    }, [currentUser, isInsightsLoading, loadOrGenerateInsights, t]);
+    }, [currentUser, isInsightsLoading, loadOrGenerateInsights, showToast]);
 
     const refreshUserData = async () => {
         if (!currentUser || isRefreshing) return;
@@ -740,7 +690,7 @@ export default function App() {
         showToast("Passkey removed.", 'success');
     };
 
-    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, loadOrGenerateInsights, refreshInsights, isInsightsLoading, isTranslating, refreshUserData, isRefreshing, ai: geminiAi };
+    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, loadOrGenerateInsights, refreshInsights, isInsightsLoading, refreshUserData, isRefreshing, ai: geminiAi };
 
     const screenKey = currentUser ? 'dashboard' : authScreen;
 
