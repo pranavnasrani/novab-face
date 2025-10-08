@@ -199,24 +199,23 @@ export default function App() {
     const loadOrGenerateInsights = useCallback(async () => {
         if (isInsightsLoading || !currentUser) return;
     
-        // Reset state for the new flow
         setInsightsData(null);
         setIsInsightsLoading(true);
         setIsTranslating(false);
     
         try {
+            // Step 1: Check for cached insights in the target language.
             const insightsDocId = language === 'en' ? 'latest' : `latest_${language}`;
             const insightsRef = db.collection(`users/${currentUser.uid}/insights`).doc(insightsDocId);
             const insightsDoc = await insightsRef.get();
     
             if (insightsDoc.exists) {
                 setInsightsData(insightsDoc.data() as CachedInsight);
-                return; // Found cached version (either English or translated)
+                return; // Success: found cached data in the correct language.
             }
     
-            // --- Cache miss, need to generate or translate ---
-    
-            // Step 1: Ensure we have the English version
+            // --- Cache miss ---
+            // Step 2: Ensure we have the base English insights, generating them if necessary.
             let englishInsights: CachedInsight | null = null;
             const englishInsightsRef = db.collection(`users/${currentUser.uid}/insights`).doc('latest');
             const englishInsightsDoc = await englishInsightsRef.get();
@@ -224,7 +223,7 @@ export default function App() {
             if (englishInsightsDoc.exists) {
                 englishInsights = englishInsightsDoc.data() as CachedInsight;
             } else {
-                // Generate English insights if they don't exist
+                // Generate English insights as they don't exist.
                 const allUserTransactions = [
                     ...transactions.filter(tx => tx.uid === currentUser.uid),
                     ...currentUser.cards.flatMap(c => c.transactions)
@@ -241,18 +240,19 @@ export default function App() {
                     await englishInsightsRef.set(englishInsights);
                 }
             }
-    
-            // If English insights are not available (not enough data), stop here.
+            
+            // If we still don't have English insights (e.g., not enough data), we can't proceed.
             if (!englishInsights) {
                 setInsightsData(null);
                 return;
             }
     
-            // Step 2: Set data based on language
+            // Step 3: Use the English insights.
             if (language === 'en') {
+                // The request was for English, and we just fetched/generated it.
                 setInsightsData(englishInsights);
             } else {
-                // Translate if language is not English
+                // The request was for another language. Translate from English.
                 setIsTranslating(true);
                 const langNameMap: Record<string, string> = { es: 'Spanish', th: 'Thai', tl: 'Tagalog' };
                 const targetLanguageName = langNameMap[language];
@@ -261,10 +261,10 @@ export default function App() {
     
                 if (translatedData) {
                     const translatedInsights: CachedInsight = { data: translatedData, lastUpdated: englishInsights.lastUpdated };
-                    await insightsRef.set(translatedInsights); // Cache the translation
+                    await insightsRef.set(translatedInsights); // Cache the new translation.
                     setInsightsData(translatedInsights);
                 } else {
-                    // Translation failed, show error
+                    // If translation fails, show an error and set data to null.
                     showToast(`Failed to translate insights to ${targetLanguageName}.`, 'error');
                     setInsightsData(null);
                 }
@@ -278,7 +278,7 @@ export default function App() {
             setIsInsightsLoading(false);
             setIsTranslating(false);
         }
-    }, [currentUser, language, isInsightsLoading, transactions, t]);
+    }, [currentUser, language, transactions, t, showToast]);
 
     const refreshInsights = useCallback(async () => {
         if (isInsightsLoading || !currentUser) return;
