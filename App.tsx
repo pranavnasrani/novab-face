@@ -9,7 +9,7 @@ import { RegisterScreen } from './components/DataScreen'; // Repurposed as Regis
 import { CheckCircleIcon, XCircleIcon } from './components/icons';
 import { auth, db } from './services/firebase';
 // FIX: Removed v9 imports that caused "module has no exported member" errors. The logic is now using the v8 SDK syntax provided by the `auth` and `db` exports from firebase.ts.
-import { getComprehensiveInsights, ai as geminiAi, generateMultilingualInsights } from './services/geminiService';
+import { getComprehensiveInsights, ai as geminiAi, translateInsights } from './services/geminiService';
 import { useTranslation } from './hooks/useTranslation';
 import { GoogleGenAI } from '@google/genai';
 
@@ -106,6 +106,7 @@ interface BankContextType {
     fetchInsights: () => Promise<void>;
     refreshInsights: () => Promise<void>;
     isInsightsLoading: boolean;
+    isTranslating: boolean;
     areInsightsAvailableInLanguage: boolean;
     refreshUserData: () => Promise<void>;
     isRefreshing: boolean;
@@ -129,6 +130,7 @@ export default function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [insightsData, setInsightsData] = useState<CachedInsights | null>(null);
     const [isInsightsLoading, setIsInsightsLoading] = useState(false);
+    const [isTranslating, setIsTranslating] = useState(false);
     const [areInsightsAvailableInLanguage, setAreInsightsAvailableInLanguage] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     
@@ -199,45 +201,72 @@ export default function App() {
     
     const fetchInsights = async () => {
         if (isInsightsLoading || !currentUser) return;
+    
+        const supportedLangs = ['en', 'es', 'th', 'tl'];
+        if (!supportedLangs.includes(language)) {
+            setAreInsightsAvailableInLanguage(false);
+            setInsightsData(null);
+            return;
+        }
+    
         setIsInsightsLoading(true);
         setAreInsightsAvailableInLanguage(true);
         setInsightsData(null);
-
+    
         try {
             const insightsRef = db.collection(`users/${currentUser.uid}/insights`).doc(`latest_${language}`);
             const insightsDoc = await insightsRef.get();
-
+    
             if (insightsDoc.exists) {
                 setInsightsData(insightsDoc.data() as CachedInsights);
-                setIsInsightsLoading(false);
                 return;
             }
-
-            // Doc for current language not found, check if ANY insights exist
+    
+            // Not found for current language, look for English base
             const englishInsightsRef = db.collection(`users/${currentUser.uid}/insights`).doc('latest_en');
             const englishInsightsDoc = await englishInsightsRef.get();
-
+    
             if (englishInsightsDoc.exists) {
-                // Insights exist, but not for this language. It must be an unsupported language.
-                setAreInsightsAvailableInLanguage(false);
-                setIsInsightsLoading(false);
+                const englishData = englishInsightsDoc.data() as CachedInsights;
+                if (language === 'en') {
+                    setInsightsData(englishData);
+                } else {
+                    // We have English, need to translate
+                    setIsTranslating(true);
+                    setIsInsightsLoading(false); // Stop the main loading spinner
+                    
+                    const translated = await translateInsights(englishData.data, language as 'es' | 'th' | 'tl');
+                    if (translated) {
+                        const now = new Date().toISOString();
+                        const translatedData: CachedInsights = { data: translated, lastUpdated: now, language };
+                        await db.collection(`users/${currentUser.uid}/insights`).doc(`latest_${language}`).set(translatedData);
+                        setInsightsData(translatedData);
+                    } else {
+                        showToast('Failed to translate insights.', 'error');
+                         // Fallback to showing English data if translation fails
+                        setInsightsData(englishData);
+                    }
+                    setIsTranslating(false);
+                }
             } else {
-                // No insights exist at all. Generate them for the first time.
-                await refreshInsights(true);
+                // No English insights exist either, so no data is available.
+                // The user can press the refresh button to generate them for the first time.
             }
         } catch (error) {
             console.error("Failed to fetch insights:", error);
             showToast(t('notEnoughData'), 'error');
-            setIsInsightsLoading(false);
+        } finally {
+            if (!isTranslating) {
+                setIsInsightsLoading(false);
+            }
         }
     };
 
-    const refreshInsights = async (isInitialFetch = false) => {
+    const refreshInsights = async () => {
         if (isInsightsLoading || !currentUser) return;
         setIsInsightsLoading(true);
         setAreInsightsAvailableInLanguage(true);
-        setInsightsData(null);
-
+        
         try {
             const allUserTransactions = [
                 ...transactions.filter(tx => tx.uid === currentUser.uid),
@@ -248,41 +277,28 @@ export default function App() {
             sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
             const recentTransactions = allUserTransactions.filter(tx => new Date(tx.timestamp) >= sixtyDaysAgo);
             
-            const multilingualResults = await generateMultilingualInsights(recentTransactions);
+            const englishResult = await getComprehensiveInsights(recentTransactions, 'en');
 
-            if (multilingualResults.en && multilingualResults.th && multilingualResults.tl) {
+            if (englishResult) {
                 const now = new Date().toISOString();
-                const englishData: CachedInsights = { data: multilingualResults.en, lastUpdated: now, language: 'en' };
-                const thaiData: CachedInsights = { data: multilingualResults.th, lastUpdated: now, language: 'th' };
-                const tagalogData: CachedInsights = { data: multilingualResults.tl, lastUpdated: now, language: 'tl' };
-
-                const batch = db.batch();
+                const englishData: CachedInsights = { data: englishResult, lastUpdated: now, language: 'en' };
+                
                 const userInsightsRef = db.collection(`users/${currentUser.uid}/insights`);
-                batch.set(userInsightsRef.doc('latest_en'), englishData);
-                batch.set(userInsightsRef.doc('latest_th'), thaiData);
-                batch.set(userInsightsRef.doc('latest_tl'), tagalogData);
+                await userInsightsRef.doc('latest_en').set(englishData);
+
+                // Invalidate old translations by deleting them
+                const batch = db.batch();
+                ['es', 'th', 'tl'].forEach(lang => {
+                    batch.delete(userInsightsRef.doc(`latest_${lang}`));
+                });
                 await batch.commit();
 
-                if (!isInitialFetch) {
-                    showToast("Insights have been refreshed.", 'success');
-                }
+                showToast("Insights have been refreshed.", 'success');
+                // Immediately fetch for the current language, which will load the new English data or translate it.
+                await fetchInsights();
 
-                switch (language) {
-                    case 'en':
-                        setInsightsData(englishData);
-                        break;
-                    case 'th':
-                        setInsightsData(thaiData);
-                        break;
-                    case 'tl':
-                        setInsightsData(tagalogData);
-                        break;
-                    default:
-                        setInsightsData(null);
-                        setAreInsightsAvailableInLanguage(false);
-                        break;
-                }
             } else {
+                setInsightsData(null);
                 showToast(t('notEnoughData'), 'error');
             }
         } catch (error) {
@@ -727,7 +743,7 @@ export default function App() {
         showToast("Passkey removed.", 'success');
     };
 
-    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, fetchInsights, refreshInsights, isInsightsLoading, areInsightsAvailableInLanguage, refreshUserData, isRefreshing, ai: geminiAi };
+    const contextValue = { currentUser, users: [], transactions, login, logout, registerUser, transferMoney, addCardToUser, addLoanToUser, requestPaymentExtension, makeAccountPayment, showToast, isPasskeySupported, passkeys, registerPasskey, loginWithPasskey, removePasskey, verifyCurrentUserWithPasskey, insightsData, fetchInsights, refreshInsights, isInsightsLoading, isTranslating, areInsightsAvailableInLanguage, refreshUserData, isRefreshing, ai: geminiAi };
 
     const screenKey = currentUser ? 'dashboard' : authScreen;
 

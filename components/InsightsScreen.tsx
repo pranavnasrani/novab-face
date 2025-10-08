@@ -24,12 +24,14 @@ const cardVariants: Variants = {
 };
 
 export const InsightsScreen = () => {
-    const { insightsData, fetchInsights, refreshInsights, isInsightsLoading, areInsightsAvailableInLanguage } = useContext(BankContext);
-    const { t } = useTranslation();
+    const { insightsData, fetchInsights, refreshInsights, isInsightsLoading, isTranslating, areInsightsAvailableInLanguage } = useContext(BankContext);
+    const { t, language } = useTranslation();
 
     useEffect(() => {
+        // This effect runs when the component mounts or the language changes.
+        // `fetchInsights` handles getting the correct data, either from cache or by translating.
         fetchInsights();
-    }, [fetchInsights]);
+    }, [language, fetchInsights]);
 
     if (!areInsightsAvailableInLanguage && !isInsightsLoading) {
         return (
@@ -37,6 +39,16 @@ export const InsightsScreen = () => {
                 <GlobeIcon className="w-12 h-12" />
                 <h3 className="font-semibold text-lg text-slate-300">{t('insightsNotAvailableTitle')}</h3>
                 <p className="text-sm text-center">{t('insightsNotAvailableDescription')}</p>
+            </div>
+        );
+    }
+
+    if (isTranslating) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3 p-4">
+                <GlobeIcon className="w-12 h-12 text-indigo-400 animate-pulse" />
+                <p className="font-semibold">{t('translatingInsights')}</p>
+                <p className="text-sm text-center">{t('translatingInsightsDescription')}</p>
             </div>
         );
     }
@@ -53,10 +65,23 @@ export const InsightsScreen = () => {
     
     if (!insightsData?.data) {
          return (
-            <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-3 p-4">
-                <LightbulbIcon className="w-12 h-12" />
-                <h3 className="font-semibold text-lg text-slate-300">{t('notEnoughData')}</h3>
-                <p className="text-sm text-center">{t('notEnoughDataDescription')}</p>
+            <div className="flex flex-col h-full">
+                <div className="p-4 flex justify-between items-center">
+                    <h2 className="text-xl font-bold">{t('aiPoweredInsights')}</h2>
+                    <button 
+                        onClick={refreshInsights} 
+                        disabled={isInsightsLoading}
+                        className="text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+                        aria-label="Refresh Insights"
+                    >
+                        <RefreshCwIcon className={`w-5 h-5 ${isInsightsLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                </div>
+                <div className="flex-grow flex flex-col items-center justify-center text-slate-500 gap-3 p-4">
+                    <LightbulbIcon className="w-12 h-12" />
+                    <h3 className="font-semibold text-lg text-slate-300">{t('notEnoughData')}</h3>
+                    <p className="text-sm text-center">{t('notEnoughDataDescription')}</p>
+                </div>
             </div>
         );
     }

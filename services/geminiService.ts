@@ -451,18 +451,38 @@ Provide a complete financial analysis in a single JSON object matching the provi
     }
 };
 
-export const generateMultilingualInsights = async (
-    transactions: Transaction[]
-): Promise<{ en: InsightsData | null; th: InsightsData | null; tl: InsightsData | null }> => {
+export const translateInsights = async (
+    insights: InsightsData,
+    language: 'es' | 'th' | 'tl'
+): Promise<InsightsData | null> => {
+    const langNameMap = {
+        es: 'Spanish',
+        th: 'Thai',
+        tl: 'Tagalog'
+    };
+    const languageName = langNameMap[language];
+
+    const prompt = `Translate the following JSON financial insights object into ${languageName}.
+Translate all user-facing string values. This includes the 'name' in 'spendingBreakdown' items, 'category' in 'topCategoryChanges' items, the 'cashFlowForecast' string, and the 'suggestion' in 'savingOpportunities' items.
+Maintain the exact JSON structure and all numeric values. The entire response must be a single, valid JSON object that conforms to the provided schema.
+
+JSON to translate:
+${JSON.stringify(insights, null, 2)}
+`;
+
     try {
-        const [en, th, tl] = await Promise.all([
-            getComprehensiveInsights(transactions, 'en'),
-            getComprehensiveInsights(transactions, 'th'),
-            getComprehensiveInsights(transactions, 'tl'),
-        ]);
-        return { en, th, tl };
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: insightsResponseSchema
+            }
+        });
+        const jsonString = response.text.trim();
+        return JSON.parse(jsonString);
     } catch (error) {
-        console.error("Error generating multilingual insights:", error);
-        return { en: null, th: null, tl: null };
+        console.error(`Error translating insights to ${languageName}:`, error);
+        return null;
     }
 };
